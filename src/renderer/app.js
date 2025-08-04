@@ -8,11 +8,13 @@ class RemoteControlClient {
     this.canvas = null;
     this.ctx = null;
     this.isConnected = false;
+    this.currentAnydeskId = null;
     
     this.initializeUI();
     this.connectToServer();
     this.startStatusUpdates();
     this.detectLocalIP();
+    this.initializeRelayIntegration();
   }
 
   initializeUI() {
@@ -44,6 +46,26 @@ class RemoteControlClient {
 
     document.getElementById('disconnectBtn').addEventListener('click', () => {
       this.disconnect();
+    });
+
+    // AnyDesk-style relay controls
+    // Host controls
+    document.getElementById('copyAnydeskIdBtn').addEventListener('click', () => {
+      this.copyAnydeskIdToClipboard();
+    });
+
+    document.getElementById('refreshAnydeskIdBtn').addEventListener('click', () => {
+      this.generateNewAnydeskId();
+    });
+
+    // Viewer relay controls
+    document.getElementById('connectViaIdBtn').addEventListener('click', () => {
+      this.connectViaAnydeskId();
+    });
+
+    // Auto-format ID input (add spaces)
+    document.getElementById('remoteId').addEventListener('input', (e) => {
+      this.formatAnydeskIdInput(e.target);
     });
 
     // Settings
@@ -645,9 +667,263 @@ class RemoteControlClient {
       document.getElementById('localIP').textContent = 'Use: ipconfig (Windows) ou ifconfig (Linux/Mac)';
     }
   }
+
+  // ====== SISTEMA ANYDESK-STYLE RELAY ======
+
+  generateAnydeskId() {
+    // Gerar ID de 9 dígitos estilo AnyDesk
+    const id = Math.floor(100000000 + Math.random() * 900000000).toString();
+    const formattedId = `${id.slice(0,3)} ${id.slice(3,6)} ${id.slice(6,9)}`;
+    
+    document.getElementById('anydeskId').textContent = formattedId;
+    this.currentAnydeskId = id;
+    
+    // Inicializar relay client se disponível
+    if (window.relayClient) {
+      window.relayClient.registerWithId(id);
+      this.updateRelayStatus('🟢 Conectado', 'Online');
+    } else {
+      this.updateRelayStatus('🔄 Inicializando...', 'Conectando');
+    }
+    
+    console.log(`ID AnyDesk gerado: ${formattedId} (${id})`);
+  }
+
+  copyAnydeskIdToClipboard() {
+    const id = document.getElementById('anydeskId').textContent;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(id.replace(/\s/g, '')).then(() => {
+        this.showNotification('ID copiado para área de transferência!', 'success');
+      });
+    } else {
+      // Fallback para browsers mais antigos
+      const textArea = document.createElement('textarea');
+      textArea.value = id.replace(/\s/g, '');
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      this.showNotification('ID copiado!', 'success');
+    }
+  }
+
+  generateNewAnydeskId() {
+    // Revogar ID atual se existir
+    if (this.currentAnydeskId && window.relayClient) {
+      window.relayClient.unregister();
+    }
+    
+    // Gerar novo ID
+    this.generateAnydeskId();
+    this.showNotification('Novo ID gerado!', 'info');
+  }
+
+  formatAnydeskIdInput(input) {
+    // Formatar input com espaços automáticos
+    let value = input.value.replace(/\D/g, ''); // Remove não-dígitos
+    if (value.length > 9) value = value.slice(0, 9); // Máximo 9 dígitos
+    
+    // Adicionar espaços
+    if (value.length > 6) {
+      value = `${value.slice(0,3)} ${value.slice(3,6)} ${value.slice(6)}`;
+    } else if (value.length > 3) {
+      value = `${value.slice(0,3)} ${value.slice(3)}`;
+    }
+    
+    input.value = value;
+  }
+
+  async connectViaAnydeskId() {
+    const remoteIdInput = document.getElementById('remoteId');
+    const remoteId = remoteIdInput.value.replace(/\s/g, ''); // Remove espaços
+    
+    if (!remoteId || remoteId.length !== 9) {
+      this.showNotification('Digite um ID válido de 9 dígitos', 'error');
+      return;
+    }
+
+    try {
+      // Mostrar status de conexão
+      document.getElementById('connectionStatus').style.display = 'block';
+      document.getElementById('targetIdDisplay').textContent = remoteIdInput.value;
+      document.getElementById('relayConnectionStatus').textContent = '🔄 Conectando ao relay...';
+      document.getElementById('connectionInfo').textContent = 'Solicitando conexão...';
+
+      // Conectar via relay client
+      if (window.relayClient) {
+        const success = await window.relayClient.connectToId(remoteId);
+        
+        if (success) {
+          document.getElementById('relayConnectionStatus').textContent = '🟢 Conectado ao relay';
+          document.getElementById('connectionInfo').textContent = 'Aguardando aprovação do host...';
+          this.showNotification(`Conectando ao ID ${remoteIdInput.value}...`, 'info');
+        } else {
+          throw new Error('Falha na conexão com o relay');
+        }
+      } else {
+        throw new Error('Sistema relay não inicializado');
+      }
+
+    } catch (error) {
+      console.error('Erro ao conectar via ID:', error);
+      document.getElementById('relayConnectionStatus').textContent = '❌ Erro na conexão';
+      document.getElementById('connectionInfo').textContent = 'Falha na conexão';
+      this.showNotification('Erro ao conectar: ' + error.message, 'error');
+    }
+  }
+
+  updateRelayStatus(localStatus, relayStatus) {
+    const localStatusElement = document.getElementById('localServerStatusHost');
+    const relayStatusElement = document.getElementById('relayServerStatusHost');
+    
+    if (localStatusElement) localStatusElement.textContent = localStatus;
+    if (relayStatusElement) relayStatusElement.textContent = relayStatus;
+  }
+
+  showNotification(message, type = 'info') {
+    // Criar notificação visual
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+    notification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 1rem 1.5rem;
+      border-radius: 8px;
+      z-index: 10000;
+      font-weight: bold;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      transition: all 0.3s ease;
+    `;
+
+    // Cores baseadas no tipo
+    switch(type) {
+      case 'success':
+        notification.style.background = '#10b981';
+        notification.style.color = 'white';
+        break;
+      case 'error':
+        notification.style.background = '#ef4444';
+        notification.style.color = 'white';
+        break;
+      case 'info':
+        notification.style.background = '#3b82f6';
+        notification.style.color = 'white';
+        break;
+      default:
+        notification.style.background = '#6b7280';
+        notification.style.color = 'white';
+    }
+
+    document.body.appendChild(notification);
+
+    // Remover após 3 segundos
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.style.opacity = '0';
+        notification.style.transform = 'translateX(100%)';
+        setTimeout(() => notification.remove(), 300);
+      }
+    }, 3000);
+  }
+
+  // Integração com relay client quando disponível
+  initializeRelayIntegration() {
+    // Aguardar relay client estar disponível
+    const checkRelay = () => {
+      if (window.relayClient) {
+        // Configurar handlers
+        window.relayClient.onConnectionRequest = (fromId, sessionId) => {
+          this.showConnectionRequest(fromId, sessionId);
+        };
+
+        window.relayClient.onSessionStart = (sessionId, remoteId) => {
+          this.startRelaySession(sessionId, remoteId);
+        };
+
+        window.relayClient.onSessionEnd = (sessionId) => {
+          this.endRelaySession(sessionId);
+        };
+
+        // Gerar ID inicial
+        this.generateAnydeskId();
+        
+        console.log('Sistema relay integrado');
+      } else {
+        // Tentar novamente em 1 segundo
+        setTimeout(checkRelay, 1000);
+      }
+    };
+    
+    checkRelay();
+  }
+
+  showConnectionRequest(fromId, sessionId) {
+    // Mostrar solicitação de conexão
+    const requestsDiv = document.getElementById('connectionRequests');
+    const requestsList = document.getElementById('requestsList');
+    
+    const requestElement = document.createElement('div');
+    requestElement.className = 'connection-request';
+    requestElement.innerHTML = `
+      <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 1rem; border-radius: 8px; margin: 0.5rem 0;">
+        <h5>🔔 Solicitação de Conexão</h5>
+        <p><strong>ID:</strong> ${fromId.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3')}</p>
+        <p>Deseja permitir o controle remoto?</p>
+        <div style="margin-top: 1rem;">
+          <button onclick="remoteControlClient.acceptConnection('${sessionId}')" 
+                  style="background: #10b981; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; margin-right: 0.5rem; cursor: pointer;">
+            ✅ Aceitar
+          </button>
+          <button onclick="remoteControlClient.rejectConnection('${sessionId}')" 
+                  style="background: #ef4444; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">
+            ❌ Rejeitar
+          </button>
+        </div>
+      </div>
+    `;
+    
+    requestsList.appendChild(requestElement);
+    requestsDiv.style.display = 'block';
+    
+    this.showNotification(`Solicitação de ${fromId.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3')}`, 'info');
+  }
+
+  acceptConnection(sessionId) {
+    if (window.relayClient) {
+      window.relayClient.acceptConnection(sessionId);
+      this.showNotification('Conexão aceita', 'success');
+    }
+  }
+
+  rejectConnection(sessionId) {
+    if (window.relayClient) {
+      window.relayClient.rejectConnection(sessionId);
+      this.showNotification('Conexão rejeitada', 'info');
+    }
+  }
+
+  startRelaySession(sessionId, remoteId) {
+    // Iniciar sessão relay
+    document.getElementById('activeSessionId').textContent = remoteId;
+    document.getElementById('sessionControls').style.display = 'block';
+    
+    this.showNotification('Sessão iniciada', 'success');
+    console.log(`Sessão relay iniciada: ${sessionId} com ${remoteId}`);
+  }
+
+  endRelaySession(sessionId) {
+    // Finalizar sessão relay
+    document.getElementById('sessionControls').style.display = 'none';
+    document.getElementById('remoteScreen').style.display = 'none';
+    
+    this.showNotification('Sessão finalizada', 'info');
+    console.log(`Sessão relay finalizada: ${sessionId}`);
+  }
 }
 
 // Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-  new RemoteControlClient();
+  window.remoteControlClient = new RemoteControlClient();
 });

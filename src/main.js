@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, nativeImage } = require('electron');
 const path = require('path');
 const RemoteControlServer = require('./server/index');
 
@@ -6,7 +6,6 @@ class RemoteControlApp {
   constructor() {
     this.mainWindow = null;
     this.server = null;
-    this.tray = null;
     
     this.initializeApp();
   }
@@ -41,7 +40,6 @@ class RemoteControlApp {
     // Aguardar o Electron estar pronto
     app.whenReady().then(() => {
       this.createMainWindow();
-      // this.createTray(); // removido temporariamente
       
       // Verificar se deve iniciar servidor (apenas se não especificado modo viewer-only)
       const isViewerOnly = process.argv.includes('--viewer-only');
@@ -97,12 +95,12 @@ class RemoteControlApp {
       this.mainWindow = null;
     });
 
-    // Minimizar para a bandeja ao invés de fechar
+    // Fechar completamente quando a janela for fechada
     this.mainWindow.on('close', (event) => {
-      if (!app.isQuiting) {
-        event.preventDefault();
-        this.mainWindow.hide();
-      }
+      // Parar servidor antes de fechar
+      this.stopServer();
+      // Permitir fechamento normal da aplicação
+      app.quit();
     });
 
     // Menu da aplicação
@@ -114,34 +112,6 @@ class RemoteControlApp {
     }
   }
 
-  createTray() {
-    // Criar ícone da bandeja
-    // const trayIcon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray-icon.png'));
-    // this.tray = new Tray(trayIcon); // removido temporariamente - ícone não existe
-
-    const contextMenu = Menu.buildFromTemplate([
-      {
-        label: 'Mostrar',
-        click: () => {
-          this.mainWindow.show();
-        }
-      },
-      {
-        label: 'Sair',
-        click: () => {
-          app.isQuiting = true;
-          app.quit();
-        }
-      }
-    ]);
-
-    this.tray.setContextMenu(contextMenu);
-    this.tray.setToolTip('Remote Control');
-
-    this.tray.on('click', () => {
-      this.mainWindow.isVisible() ? this.mainWindow.hide() : this.mainWindow.show();
-    });
-  }
 
   createMenu() {
     const template = [
@@ -160,7 +130,7 @@ class RemoteControlApp {
             label: 'Sair',
             accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
             click: () => {
-              app.isQuiting = true;
+              this.stopServer();
               app.quit();
             }
           }
