@@ -1,0 +1,291 @@
+const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage } = require('electron');
+const path = require('path');
+const RemoteControlServer = require('./server/index');
+
+class RemoteControlApp {
+  constructor() {
+    this.mainWindow = null;
+    this.server = null;
+    this.tray = null;
+    
+    this.initializeApp();
+  }
+
+  getIconPath() {
+    const fs = require('fs');
+    
+    // Tentar diferentes caminhos possíveis para o ícone
+    const possiblePaths = [
+      path.join(__dirname, '..', 'build', 'icon.png'),
+      path.join(__dirname, 'build', 'icon.png'),
+      path.join(process.resourcesPath, 'build', 'icon.png'),
+      path.join(__dirname, '..', '..', 'build', 'icon.png')
+    ];
+    
+    for (const iconPath of possiblePaths) {
+      try {
+        if (fs.existsSync(iconPath)) {
+          console.log(`Ícone encontrado em: ${iconPath}`);
+          return iconPath;
+        }
+      } catch (error) {
+        // Ignorar erros de acesso
+      }
+    }
+    
+    console.log('Ícone não encontrado, usando padrão do sistema');
+    return undefined; // Usa ícone padrão do Electron
+  }
+
+  initializeApp() {
+    // Aguardar o Electron estar pronto
+    app.whenReady().then(() => {
+      this.createMainWindow();
+      // this.createTray(); // removido temporariamente
+      
+      // Verificar se deve iniciar servidor (apenas se não especificado modo viewer-only)
+      const isViewerOnly = process.argv.includes('--viewer-only');
+      if (!isViewerOnly) {
+        this.startServer();
+      } else {
+        console.log('Iniciado em modo viewer-only (sem servidor)');
+      }
+      
+      this.setupIPC();
+      
+      app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+          this.createMainWindow();
+        }
+      });
+    });
+
+    app.on('window-all-closed', () => {
+      if (process.platform !== 'darwin') {
+        this.stopServer();
+        app.quit();
+      }
+    });
+
+    app.on('before-quit', () => {
+      this.stopServer();
+    });
+  }
+
+  createMainWindow() {
+    this.mainWindow = new BrowserWindow({
+      width: 1200,
+      height: 800,
+      minWidth: 800,
+      minHeight: 600,
+      icon: this.getIconPath(),
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'preload.js')
+      },
+      show: false
+    });
+
+    this.mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+
+    this.mainWindow.once('ready-to-show', () => {
+      this.mainWindow.show();
+    });
+
+    this.mainWindow.on('closed', () => {
+      this.mainWindow = null;
+    });
+
+    // Minimizar para a bandeja ao invés de fechar
+    this.mainWindow.on('close', (event) => {
+      if (!app.isQuiting) {
+        event.preventDefault();
+        this.mainWindow.hide();
+      }
+    });
+
+    // Menu da aplicação
+    this.createMenu();
+
+    // DevTools apenas em desenvolvimento
+    if (process.env.NODE_ENV === 'development') {
+      this.mainWindow.webContents.openDevTools();
+    }
+  }
+
+  createTray() {
+    // Criar ícone da bandeja
+    // const trayIcon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray-icon.png'));
+    // this.tray = new Tray(trayIcon); // removido temporariamente - ícone não existe
+
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Mostrar',
+        click: () => {
+          this.mainWindow.show();
+        }
+      },
+      {
+        label: 'Sair',
+        click: () => {
+          app.isQuiting = true;
+          app.quit();
+        }
+      }
+    ]);
+
+    this.tray.setContextMenu(contextMenu);
+    this.tray.setToolTip('Remote Control');
+
+    this.tray.on('click', () => {
+      this.mainWindow.isVisible() ? this.mainWindow.hide() : this.mainWindow.show();
+    });
+  }
+
+  createMenu() {
+    const template = [
+      {
+        label: 'Arquivo',
+        submenu: [
+          {
+            label: 'Gerar Código',
+            accelerator: 'CmdOrCtrl+G',
+            click: () => {
+              this.mainWindow.webContents.send('generate-code');
+            }
+          },
+          { type: 'separator' },
+          {
+            label: 'Sair',
+            accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
+            click: () => {
+              app.isQuiting = true;
+              app.quit();
+            }
+          }
+        ]
+      },
+      {
+        label: 'Conexão',
+        submenu: [
+          {
+            label: 'Iniciar como Host',
+            click: () => {
+              this.mainWindow.webContents.send('start-host');
+            }
+          },
+          {
+            label: 'Conectar como Viewer',
+            click: () => {
+              this.mainWindow.webContents.send('connect-viewer');
+            }
+          },
+          { type: 'separator' },
+          {
+            label: 'Desconectar',
+            click: () => {
+              this.mainWindow.webContents.send('disconnect');
+            }
+          }
+        ]
+      },
+      {
+        label: 'Ajuda',
+        submenu: [
+          {
+            label: 'Sobre',
+            click: () => {
+              this.mainWindow.webContents.send('show-about');
+            }
+          }
+        ]
+      }
+    ];
+
+    if (process.platform === 'darwin') {
+      template.unshift({
+        label: app.getName(),
+        submenu: [
+          { role: 'about' },
+          { type: 'separator' },
+          { role: 'services' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideothers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+          { role: 'quit' }
+        ]
+      });
+    }
+
+    const menu = Menu.buildFromTemplate(template);
+    Menu.setApplicationMenu(menu);
+  }
+
+  startServer() {
+    try {
+      this.server = new RemoteControlServer(3000);
+      this.server.start();
+      console.log('Servidor iniciado com sucesso');
+    } catch (error) {
+      console.error('Erro ao iniciar servidor:', error);
+    }
+  }
+
+  stopServer() {
+    if (this.server && this.server.server) {
+      this.server.server.close();
+      console.log('Servidor parado');
+    }
+  }
+
+  setupIPC() {
+    // Gerar código de acesso
+    ipcMain.handle('generate-access-code', async () => {
+      if (!this.server) return null;
+      
+      try {
+        const code = this.server.auth.generateAccessCode();
+        return {
+          code: code,
+          expires: Date.now() + 300000 // 5 minutos
+        };
+      } catch (error) {
+        console.error('Erro ao gerar código:', error);
+        return null;
+      }
+    });
+
+    // Obter informações do servidor
+    ipcMain.handle('get-server-info', async () => {
+      return {
+        port: 3000,
+        clients: this.server ? this.server.clients.size : 0,
+        sessions: this.server ? this.server.sessions.size : 0
+      };
+    });
+
+    // Obter estatísticas de autenticação
+    ipcMain.handle('get-auth-stats', async () => {
+      if (!this.server) return null;
+      return this.server.auth.getStats();
+    });
+
+    // Revogar código
+    ipcMain.handle('revoke-code', async (event, code) => {
+      if (!this.server) return false;
+      return this.server.auth.revokeAccessCode(code);
+    });
+
+    // Obter códigos ativos
+    ipcMain.handle('get-active-codes', async () => {
+      if (!this.server) return [];
+      return this.server.auth.getActiveCodes();
+    });
+  }
+}
+
+// Instanciar aplicação
+new RemoteControlApp();
