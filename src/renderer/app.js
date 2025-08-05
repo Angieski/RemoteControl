@@ -9,12 +9,20 @@ class RemoteControlClient {
     this.ctx = null;
     this.isConnected = false;
     this.currentAnydeskId = null;
+    this.relayWs = null;
+    this.currentRelaySession = null;
+    this.relayScreenInterval = null;
     
     this.initializeUI();
     this.connectToServer();
     this.startStatusUpdates();
     this.detectLocalIP();
     this.initializeRelayIntegration();
+    
+    // Conectar ao relay automaticamente
+    setTimeout(() => {
+      this.connectToRelayServer();
+    }, 2000);
   }
 
   initializeUI() {
@@ -678,15 +686,352 @@ class RemoteControlClient {
     document.getElementById('anydeskId').textContent = formattedId;
     this.currentAnydeskId = id;
     
-    // Inicializar relay client se disponível
-    if (window.relayClient) {
-      window.relayClient.registerWithId(id);
-      this.updateRelayStatus('🟢 Conectado', 'Online');
-    } else {
-      this.updateRelayStatus('🔄 Inicializando...', 'Conectando');
-    }
+    // Registrar no servidor relay diretamente
+    this.registerWithRelayServer(id);
     
     console.log(`ID AnyDesk gerado: ${formattedId} (${id})`);
+  }
+
+  // Nova função para registrar diretamente no relay
+  registerWithRelayServer(clientId) {
+    // Criar conexão WebSocket direta se não existir
+    if (!this.relayWs || this.relayWs.readyState !== WebSocket.OPEN) {
+      this.connectToRelayServer();
+    }
+    
+    // Aguardar conexão e registrar
+    const register = () => {
+      if (this.relayWs && this.relayWs.readyState === WebSocket.OPEN) {
+        this.relayWs.send(JSON.stringify({
+          type: 'register',
+          clientId: clientId,
+          clientType: 'host'
+        }));
+        this.updateRelayStatus('🟢 Conectado', '🟢 ID Registrado');
+        console.log(`ID registrado no relay: ${clientId}`);
+      } else {
+        // Tentar novamente em 1 segundo
+        setTimeout(register, 1000);
+      }
+    };
+    
+    register();
+  }
+
+  // Conectar ao servidor relay
+  connectToRelayServer() {
+    if (this.relayWs && this.relayWs.readyState === WebSocket.OPEN) {
+      return; // Já conectado
+    }
+
+    try {
+      this.updateRelayStatus('🔄 Conectando...', '🔄 Conectando ao relay...');
+      this.relayWs = new WebSocket('ws://54.232.138.198:8080');
+
+      this.relayWs.onopen = () => {
+        console.log('Conectado ao servidor relay AWS');
+        this.updateRelayStatus('🟢 Conectado', '🟢 Online');
+      };
+
+      this.relayWs.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          this.handleRelayMessage(message);
+        } catch (error) {
+          console.error('Erro ao processar mensagem relay:', error);
+        }
+      };
+
+      this.relayWs.onclose = () => {
+        console.log('Desconectado do servidor relay');
+        this.updateRelayStatus('🔴 Desconectado', '🔴 Offline');
+        // Tentar reconectar em 5 segundos
+        setTimeout(() => this.connectToRelayServer(), 5000);
+      };
+
+      this.relayWs.onerror = (error) => {
+        console.error('Erro WebSocket relay:', error);
+        this.updateRelayStatus('❌ Erro', '❌ Erro de conexão');
+      };
+
+    } catch (error) {
+      console.error('Erro ao conectar relay:', error);
+      this.updateRelayStatus('❌ Erro', '❌ Falha na conexão');
+    }
+  }
+
+  // Processar mensagens do relay
+  handleRelayMessage(message) {
+    console.log('Mensagem relay recebida:', message);
+    
+    switch (message.type) {
+      case 'registered':
+        console.log(`Cliente registrado com ID: ${message.clientId}`);
+        this.updateRelayStatus('🟢 Conectado', `🆔 ID: ${message.clientId}`);
+        break;
+        
+      case 'connection_request':
+        this.showConnectionRequest(message.fromId, message.sessionId);
+        break;
+        
+      case 'connection_accepted':
+        this.handleConnectionAccepted(message.sessionId);
+        break;
+        
+      case 'connection_rejected':
+        this.handleConnectionRejected(message.sessionId);
+        break;
+        
+      case 'connect_failed':
+        this.handleConnectFailed(message.reason, message.targetId);
+        break;
+        
+      case 'relay_data':
+        this.handleRelayData(message);
+        break;
+        
+      case 'heartbeat_response':
+        // Heartbeat OK
+        break;
+        
+      default:
+        console.log('Tipo de mensagem relay desconhecido:', message.type);
+    }
+  }
+
+  // Tratar falha de conexão
+  handleConnectFailed(reason, targetId) {
+    console.log(`Conexão falhou: ${reason} (ID: ${targetId})`);
+    
+    document.getElementById('connectionInfo').textContent = `Falha: ${reason}`;
+    
+    if (reason.includes('não encontrado') || reason.includes('offline')) {
+      this.showNotification(`ID ${targetId} não encontrado ou offline`, 'error');
+    } else {
+      this.showNotification(`Erro na conexão: ${reason}`, 'error');
+    }
+  }
+
+  // Tratar conexão aceita
+  handleConnectionAccepted(sessionId) {
+    console.log(`Conexão aceita! Sessão: ${sessionId}`);
+    this.currentRelaySession = sessionId;
+    
+    // Atualizar interface do viewer
+    document.getElementById('connectionInfo').textContent = '✅ Conectado! Iniciando controle remoto...';
+    document.getElementById('sessionControls').style.display = 'block';
+    document.getElementById('activeSessionId').textContent = sessionId.slice(0, 8);
+    
+    this.showNotification('Conexão estabelecida! Iniciando tela remota...', 'success');
+    
+    // Iniciar captura de tela se for host
+    if (this.isHost || this.currentAnydeskId) {
+      this.startRelayScreenCapture();
+    }
+    
+    // Mostrar tela remota se for viewer
+    if (!this.isHost && !this.currentAnydeskId) {
+      document.getElementById('remoteScreen').style.display = 'block';
+      this.setupRelayCanvas();
+    }
+  }
+
+  // Tratar conexão rejeitada
+  handleConnectionRejected(sessionId) {
+    console.log(`Conexão rejeitada. Sessão: ${sessionId}`);
+    
+    document.getElementById('connectionInfo').textContent = '❌ Conexão rejeitada pelo host';
+    this.showNotification('Host rejeitou a conexão', 'error');
+    
+    // Limpar interface
+    document.getElementById('sessionControls').style.display = 'none';
+    document.getElementById('remoteScreen').style.display = 'none';
+  }
+
+  // Configurar canvas para exibir tela remota
+  setupRelayCanvas() {
+    const canvas = document.getElementById('screenCanvas');
+    if (!canvas) return;
+    
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    
+    // Configurar eventos do mouse para enviar para o host
+    canvas.addEventListener('mousemove', (e) => {
+      if (this.currentRelaySession) {
+        this.sendRelayInput('mouseMove', { x: e.offsetX, y: e.offsetY });
+      }
+    });
+    
+    canvas.addEventListener('click', (e) => {
+      if (this.currentRelaySession) {
+        this.sendRelayInput('mouseClick', { x: e.offsetX, y: e.offsetY, button: e.button });
+      }
+    });
+    
+    // Configurar eventos do teclado
+    document.addEventListener('keydown', (e) => {
+      if (this.currentRelaySession && document.getElementById('remoteScreen').style.display === 'block') {
+        this.sendRelayInput('keyDown', { key: e.key, code: e.code });
+        e.preventDefault();
+      }
+    });
+    
+    document.addEventListener('keyup', (e) => {
+      if (this.currentRelaySession && document.getElementById('remoteScreen').style.display === 'block') {
+        this.sendRelayInput('keyUp', { key: e.key, code: e.code });
+        e.preventDefault();
+      }
+    });
+    
+    console.log('Canvas configurado para controle remoto');
+  }
+
+  // Enviar input do viewer para o host via relay
+  sendRelayInput(type, data) {
+    if (!this.relayWs || this.relayWs.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    
+    this.relayWs.send(JSON.stringify({
+      type: 'relay_data',
+      sessionId: this.currentRelaySession,
+      dataType: 'input',
+      data: { type, ...data }
+    }));
+  }
+
+  // Iniciar captura de tela no host para relay
+  startRelayScreenCapture() {
+    if (this.relayScreenInterval) {
+      clearInterval(this.relayScreenInterval);
+    }
+    
+    console.log('Iniciando captura de tela para relay...');
+    
+    // Capturar e enviar tela a cada 200ms (5 FPS)
+    this.relayScreenInterval = setInterval(async () => {
+      try {
+        if (!this.currentRelaySession || !this.relayWs || this.relayWs.readyState !== WebSocket.OPEN) {
+          return;
+        }
+        
+        // Capturar tela via Electron API
+        const screenshot = await this.captureScreenForRelay();
+        
+        if (screenshot) {
+          this.relayWs.send(JSON.stringify({
+            type: 'relay_data',
+            sessionId: this.currentRelaySession,
+            dataType: 'screen',
+            data: screenshot
+          }));
+        }
+        
+      } catch (error) {
+        console.error('Erro na captura para relay:', error);
+      }
+    }, 200); // 5 FPS
+  }
+
+  // Capturar tela para relay
+  async captureScreenForRelay() {
+    try {
+      if (window.electronAPI && window.electronAPI.captureScreen) {
+        // Usar API do Electron se disponível
+        return await window.electronAPI.captureScreen();
+      } else {
+        // Fallback: usar API do navegador (limitado)
+        return await this.captureViaWebAPI();
+      }
+    } catch (error) {
+      console.error('Erro na captura de tela:', error);
+      return null;
+    }
+  }
+
+  // Fallback para captura via Web API
+  async captureViaWebAPI() {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { mediaSource: 'screen' }
+      });
+      
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.play();
+      
+      return new Promise((resolve) => {
+        video.onloadedmetadata = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.floor(video.videoWidth * 0.5); // Reduzir resolução
+          canvas.height = Math.floor(video.videoHeight * 0.5);
+          
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          stream.getTracks().forEach(track => track.stop());
+          
+          resolve({
+            type: 'image/jpeg',
+            data: canvas.toDataURL('image/jpeg', 0.6).split(',')[1], // Qualidade 60%
+            width: canvas.width,
+            height: canvas.height,
+            timestamp: Date.now()
+          });
+        };
+      });
+    } catch (error) {
+      console.error('Erro na captura web:', error);
+      return null;
+    }
+  }
+
+  // Processar dados do relay
+  handleRelayData(message) {
+    const { dataType, data } = message;
+    
+    switch (dataType) {
+      case 'screen':
+        this.displayRelayScreen(data);
+        break;
+        
+      case 'input':
+        this.processRelayInput(data);
+        break;
+        
+      default:
+        console.log('Tipo de dados relay desconhecido:', dataType);
+    }
+  }
+
+  // Exibir tela remota recebida via relay
+  displayRelayScreen(screenData) {
+    if (!this.canvas || !this.ctx) return;
+    
+    try {
+      const img = new Image();
+      img.onload = () => {
+        this.canvas.width = img.width;
+        this.canvas.height = img.height;
+        this.ctx.drawImage(img, 0, 0);
+      };
+      
+      img.src = `data:${screenData.type};base64,${screenData.data}`;
+    } catch (error) {
+      console.error('Erro ao exibir tela relay:', error);
+    }
+  }
+
+  // Processar input recebido via relay (no host)
+  processRelayInput(inputData) {
+    if (window.electronAPI && window.electronAPI.sendInput) {
+      // Enviar para processo principal do Electron
+      window.electronAPI.sendInput(inputData);
+    } else {
+      console.log('Input recebido via relay:', inputData);
+      // Fallback para debug
+    }
   }
 
   copyAnydeskIdToClipboard() {
@@ -719,50 +1064,86 @@ class RemoteControlClient {
   }
 
   formatAnydeskIdInput(input) {
+    // Pegar posição do cursor antes da formatação
+    const cursorPos = input.selectionStart;
+    
     // Formatar input com espaços automáticos
     let value = input.value.replace(/\D/g, ''); // Remove não-dígitos
     if (value.length > 9) value = value.slice(0, 9); // Máximo 9 dígitos
     
-    // Adicionar espaços
+    // Adicionar espaços para visualização
+    let formattedValue = value;
     if (value.length > 6) {
-      value = `${value.slice(0,3)} ${value.slice(3,6)} ${value.slice(6)}`;
+      formattedValue = `${value.slice(0,3)} ${value.slice(3,6)} ${value.slice(6)}`;
     } else if (value.length > 3) {
-      value = `${value.slice(0,3)} ${value.slice(3)}`;
+      formattedValue = `${value.slice(0,3)} ${value.slice(3)}`;
     }
     
-    input.value = value;
+    input.value = formattedValue;
+    
+    // Restaurar posição do cursor (aproximadamente)
+    let newCursorPos = cursorPos;
+    if (cursorPos > 3 && formattedValue.length > 3) newCursorPos++;
+    if (cursorPos > 6 && formattedValue.length > 7) newCursorPos++;
+    input.setSelectionRange(newCursorPos, newCursorPos);
+    
+    // Debug
+    console.log(`Input formatado: "${input.value}" (${value.length} dígitos)`);
   }
 
   async connectViaAnydeskId() {
     const remoteIdInput = document.getElementById('remoteId');
-    const remoteId = remoteIdInput.value.replace(/\s/g, ''); // Remove espaços
+    const originalInput = remoteIdInput.value.trim(); // Remove espaços do início/fim
+    const remoteId = originalInput.replace(/\s/g, ''); // Remove todos os espaços
     
-    if (!remoteId || remoteId.length !== 9) {
-      this.showNotification('Digite um ID válido de 9 dígitos', 'error');
+    // Validar se tem apenas números
+    if (!remoteId || !/^\d{9}$/.test(remoteId)) {
+      this.showNotification('Digite um ID válido de 9 dígitos (apenas números)', 'error');
+      console.log(`ID inválido: "${originalInput}" -> "${remoteId}" (${remoteId.length} caracteres)`);
       return;
     }
+    
+    console.log(`Conectando ao ID: "${originalInput}" -> "${remoteId}"`);
 
     try {
+      // Conectar ao relay se não estiver conectado
+      if (!this.relayWs || this.relayWs.readyState !== WebSocket.OPEN) {
+        this.connectToRelayServer();
+        // Aguardar conexão
+        await new Promise((resolve) => {
+          const checkConnection = () => {
+            if (this.relayWs && this.relayWs.readyState === WebSocket.OPEN) {
+              resolve();
+            } else {
+              setTimeout(checkConnection, 100);
+            }
+          };
+          checkConnection();
+        });
+      }
+
       // Mostrar status de conexão
       document.getElementById('connectionStatus').style.display = 'block';
       document.getElementById('targetIdDisplay').textContent = remoteIdInput.value;
-      document.getElementById('relayConnectionStatus').textContent = '🔄 Conectando ao relay...';
+      document.getElementById('relayConnectionStatus').textContent = '🟢 Conectado ao relay';
       document.getElementById('connectionInfo').textContent = 'Solicitando conexão...';
 
-      // Conectar via relay client
-      if (window.relayClient) {
-        const success = await window.relayClient.connectToId(remoteId);
+      // Registrar como viewer primeiro
+      this.relayWs.send(JSON.stringify({
+        type: 'register',
+        clientType: 'viewer'
+      }));
+
+      // Aguardar um pouco e solicitar conexão
+      setTimeout(() => {
+        this.relayWs.send(JSON.stringify({
+          type: 'connect_request',
+          targetId: remoteId
+        }));
         
-        if (success) {
-          document.getElementById('relayConnectionStatus').textContent = '🟢 Conectado ao relay';
-          document.getElementById('connectionInfo').textContent = 'Aguardando aprovação do host...';
-          this.showNotification(`Conectando ao ID ${remoteIdInput.value}...`, 'info');
-        } else {
-          throw new Error('Falha na conexão com o relay');
-        }
-      } else {
-        throw new Error('Sistema relay não inicializado');
-      }
+        document.getElementById('connectionInfo').textContent = 'Aguardando aprovação do host...';
+        this.showNotification(`Solicitando conexão ao ID ${remoteIdInput.value}...`, 'info');
+      }, 500);
 
     } catch (error) {
       console.error('Erro ao conectar via ID:', error);

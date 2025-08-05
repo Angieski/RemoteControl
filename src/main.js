@@ -254,6 +254,82 @@ class RemoteControlApp {
       if (!this.server) return [];
       return this.server.auth.getActiveCodes();
     });
+
+    // Captura de tela para relay
+    ipcMain.handle('capture-screen-relay', async () => {
+      try {
+        const { desktopCapturer } = require('electron');
+        
+        const sources = await desktopCapturer.getSources({
+          types: ['screen'],
+          thumbnailSize: { width: 1280, height: 720 } // Resolução reduzida
+        });
+        
+        if (sources.length > 0) {
+          const screenshot = sources[0].thumbnail.toJPEG(60); // Qualidade 60%
+          return {
+            type: 'image/jpeg',
+            data: screenshot.toString('base64'),
+            width: 1280,
+            height: 720,
+            timestamp: Date.now()
+          };
+        }
+        
+        return null;
+      } catch (error) {
+        console.error('Erro na captura de tela:', error);
+        return null;
+      }
+    });
+
+    // Processar input do relay (controle remoto)
+    ipcMain.handle('send-input-relay', async (event, inputData) => {
+      try {
+        const { screen } = require('electron');
+        const robot = require('@hurdlegroup/robotjs');
+        
+        const { type, x, y, button, key, code } = inputData;
+        
+        switch (type) {
+          case 'mouseMove':
+            if (x !== undefined && y !== undefined) {
+              robot.moveMouse(x, y);
+            }
+            break;
+            
+          case 'mouseClick':
+            if (x !== undefined && y !== undefined) {
+              robot.moveMouse(x, y);
+              const mouseButton = button === 2 ? 'right' : 'left';
+              robot.mouseClick(mouseButton);
+            }
+            break;
+            
+          case 'keyDown':
+            if (key) {
+              try {
+                robot.keyPress(key.toLowerCase());
+              } catch (e) {
+                console.log('Tecla não suportada:', key);
+              }
+            }
+            break;
+            
+          case 'keyUp':
+            // robotjs não diferencia keyDown/keyUp para teclas simples
+            break;
+            
+          default:
+            console.log('Tipo de input desconhecido:', type);
+        }
+        
+        return true;
+      } catch (error) {
+        console.error('Erro ao processar input:', error);
+        return false;
+      }
+    });
   }
 }
 

@@ -38,5 +38,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Remover listeners
   removeAllListeners: (channel) => {
     ipcRenderer.removeAllListeners(channel);
-  }
+  },
+
+  // Captura de tela para relay
+  captureScreen: () => ipcRenderer.invoke('capture-screen-relay'),
+  
+  // Enviar input para controle remoto
+  sendInput: (inputData) => ipcRenderer.invoke('send-input-relay', inputData)
 });
