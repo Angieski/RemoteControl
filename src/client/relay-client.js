@@ -8,7 +8,7 @@ class RemoteControlRelayClient {
     this.heartbeatInterval = null;
     
     // Configuração do servidor relay
-    this.relayServerUrl = 'ws://sua-relay-server.com:8080'; // Substituir pela URL real
+    this.relayServerUrl = 'ws://54.232.138.198:8080'; // Servidor AWS EC2
     
     this.initializeUI();
     this.connectToRelay();
