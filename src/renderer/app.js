@@ -76,6 +76,15 @@ class RemoteControlClient {
       this.formatAnydeskIdInput(e.target);
     });
 
+    // Debug buttons
+    document.getElementById('debugRefreshBtn').addEventListener('click', () => {
+      this.updateDebugInfo();
+    });
+
+    document.getElementById('debugTestConnBtn').addEventListener('click', () => {
+      this.testRelayConnection();
+    });
+
     // Settings
     document.getElementById('imageQuality').addEventListener('input', (e) => {
       document.getElementById('qualityValue').textContent = e.target.value;
@@ -686,36 +695,31 @@ class RemoteControlClient {
     document.getElementById('anydeskId').textContent = formattedId;
     this.currentAnydeskId = id;
     
-    // Registrar no servidor relay diretamente
-    this.registerWithRelayServer(id);
+    // ID será registrado automaticamente quando conectado ao relay
     
     console.log(`ID AnyDesk gerado: ${formattedId} (${id})`);
   }
 
   // Nova função para registrar diretamente no relay
-  registerWithRelayServer(clientId) {
+  registerWithRelayServer() {
     // Criar conexão WebSocket direta se não existir
     if (!this.relayWs || this.relayWs.readyState !== WebSocket.OPEN) {
       this.connectToRelayServer();
+      return;
     }
     
-    // Aguardar conexão e registrar
-    const register = () => {
-      if (this.relayWs && this.relayWs.readyState === WebSocket.OPEN) {
-        this.relayWs.send(JSON.stringify({
-          type: 'register',
-          clientId: clientId,
-          clientType: 'host'
-        }));
-        this.updateRelayStatus('🟢 Conectado', '🟢 ID Registrado');
-        console.log(`ID registrado no relay: ${clientId}`);
-      } else {
-        // Tentar novamente em 1 segundo
-        setTimeout(register, 1000);
+    // Registrar imediatamente se conectado
+    this.relayWs.send(JSON.stringify({
+      type: 'register_client',
+      clientType: 'host',
+      deviceInfo: {
+        os: navigator.platform,
+        userAgent: navigator.userAgent.substring(0, 100)
       }
-    };
+    }));
     
-    register();
+    this.updateRelayStatus('🟢 Conectado', '🔄 Registrando...');
+    console.log(`Registro enviado para relay`);
   }
 
   // Conectar ao servidor relay
@@ -731,6 +735,11 @@ class RemoteControlClient {
       this.relayWs.onopen = () => {
         console.log('Conectado ao servidor relay AWS');
         this.updateRelayStatus('🟢 Conectado', '🟢 Online');
+        
+        // Registrar automaticamente como host após conectar
+        if (!this.currentAnydeskId) {
+          this.registerWithRelayServer();
+        }
       };
 
       this.relayWs.onmessage = (event) => {
@@ -762,16 +771,31 @@ class RemoteControlClient {
 
   // Processar mensagens do relay
   handleRelayMessage(message) {
+    // Atualizar debug com última mensagem
+    document.getElementById('debugLastMessage').textContent = `📥 ${message.type} (${new Date().toLocaleTimeString()})`;
+    
     console.log('Mensagem relay recebida:', message);
     
     switch (message.type) {
-      case 'registered':
+      case 'server_hello':
+        console.log('Conectado ao servidor relay:', message.message);
+        break;
+        
+      case 'client_registered':
         console.log(`Cliente registrado com ID: ${message.clientId}`);
-        this.updateRelayStatus('🟢 Conectado', `🆔 ID: ${message.clientId}`);
+        this.currentAnydeskId = message.clientId;
+        const formattedId = `${message.clientId.slice(0,3)} ${message.clientId.slice(3,6)} ${message.clientId.slice(6,9)}`;
+        document.getElementById('anydeskId').textContent = formattedId;
+        this.updateRelayStatus('🟢 Conectado', `🆔 ID: ${formattedId}`);
         break;
         
       case 'connection_request':
-        this.showConnectionRequest(message.fromId, message.sessionId);
+        this.showConnectionRequest(message.requesterId, message.sessionId, message.requestType);
+        break;
+        
+      case 'connection_requested':
+        console.log('Solicitação enviada:', message.message);
+        document.getElementById('connectionInfo').textContent = message.message;
         break;
         
       case 'connection_accepted':
@@ -779,23 +803,40 @@ class RemoteControlClient {
         break;
         
       case 'connection_rejected':
-        this.handleConnectionRejected(message.sessionId);
+        this.handleConnectionRejected();
         break;
         
-      case 'connect_failed':
-        this.handleConnectFailed(message.reason, message.targetId);
+      case 'connection_established':
+        console.log('Conexão estabelecida como host:', message.sessionId);
+        this.currentRelaySession = message.sessionId;
+        this.startRelayScreenCapture();
+        break;
+        
+      case 'session_ended':
+        this.handleSessionEnded(message.sessionId);
         break;
         
       case 'relay_data':
         this.handleRelayData(message);
         break;
         
-      case 'heartbeat_response':
-        // Heartbeat OK
+      case 'error':
+        console.error('Erro do servidor relay:', message.message);
+        this.showNotification('Erro: ' + message.message, 'error');
+        break;
+        
+      case 'test_pong':
+        document.getElementById('debugLastMessage').textContent = `📥 Teste OK: ${new Date().toLocaleTimeString()}`;
+        this.showNotification('Teste de conexão OK!', 'success');
+        break;
+        
+      case 'stats_response':
+        console.log('Estatísticas do servidor:', message);
         break;
         
       default:
         console.log('Tipo de mensagem relay desconhecido:', message.type);
+        document.getElementById('debugLastMessage').textContent = `❓ ${message.type}`;
     }
   }
 
@@ -1130,15 +1171,20 @@ class RemoteControlClient {
 
       // Registrar como viewer primeiro
       this.relayWs.send(JSON.stringify({
-        type: 'register',
-        clientType: 'viewer'
+        type: 'register_client',
+        clientType: 'viewer',
+        deviceInfo: {
+          os: navigator.platform,
+          userAgent: navigator.userAgent.substring(0, 100)
+        }
       }));
 
       // Aguardar um pouco e solicitar conexão
       setTimeout(() => {
         this.relayWs.send(JSON.stringify({
-          type: 'connect_request',
-          targetId: remoteId
+          type: 'request_connection',
+          targetClientId: remoteId,
+          requestType: 'control'
         }));
         
         document.getElementById('connectionInfo').textContent = 'Aguardando aprovação do host...';
@@ -1227,8 +1273,7 @@ class RemoteControlClient {
           this.endRelaySession(sessionId);
         };
 
-        // Gerar ID inicial
-        this.generateAnydeskId();
+        // O ID será gerado quando conectado ao relay
         
         console.log('Sistema relay integrado');
       } else {
@@ -1240,17 +1285,23 @@ class RemoteControlClient {
     checkRelay();
   }
 
-  showConnectionRequest(fromId, sessionId) {
+  showConnectionRequest(fromId, sessionId, requestType = 'controle') {
     // Mostrar solicitação de conexão
     const requestsDiv = document.getElementById('connectionRequests');
     const requestsList = document.getElementById('requestsList');
+    
+    // Limpar solicitações anteriores
+    requestsList.innerHTML = '';
+    
+    const formattedId = fromId.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3');
     
     const requestElement = document.createElement('div');
     requestElement.className = 'connection-request';
     requestElement.innerHTML = `
       <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 1rem; border-radius: 8px; margin: 0.5rem 0;">
         <h5>🔔 Solicitação de Conexão</h5>
-        <p><strong>ID:</strong> ${fromId.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3')}</p>
+        <p><strong>ID:</strong> ${formattedId}</p>
+        <p><strong>Tipo:</strong> ${requestType}</p>
         <p>Deseja permitir o controle remoto?</p>
         <div style="margin-top: 1rem;">
           <button onclick="remoteControlClient.acceptConnection('${sessionId}')" 
@@ -1268,19 +1319,37 @@ class RemoteControlClient {
     requestsList.appendChild(requestElement);
     requestsDiv.style.display = 'block';
     
-    this.showNotification(`Solicitação de ${fromId.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3')}`, 'info');
+    this.showNotification(`Solicitação de ${formattedId}`, 'info');
   }
 
   acceptConnection(sessionId) {
-    if (window.relayClient) {
-      window.relayClient.acceptConnection(sessionId);
+    if (this.relayWs && this.relayWs.readyState === WebSocket.OPEN) {
+      this.relayWs.send(JSON.stringify({
+        type: 'accept_connection',
+        sessionId: sessionId,
+        accepted: true
+      }));
+      
+      // Limpar interface de solicitações
+      document.getElementById('connectionRequests').style.display = 'none';
+      document.getElementById('requestsList').innerHTML = '';
+      
       this.showNotification('Conexão aceita', 'success');
     }
   }
 
   rejectConnection(sessionId) {
-    if (window.relayClient) {
-      window.relayClient.rejectConnection(sessionId);
+    if (this.relayWs && this.relayWs.readyState === WebSocket.OPEN) {
+      this.relayWs.send(JSON.stringify({
+        type: 'accept_connection',
+        sessionId: sessionId,
+        accepted: false
+      }));
+      
+      // Limpar interface de solicitações
+      document.getElementById('connectionRequests').style.display = 'none';
+      document.getElementById('requestsList').innerHTML = '';
+      
       this.showNotification('Conexão rejeitada', 'info');
     }
   }
@@ -1301,6 +1370,70 @@ class RemoteControlClient {
     
     this.showNotification('Sessão finalizada', 'info');
     console.log(`Sessão relay finalizada: ${sessionId}`);
+  }
+
+  // ====== FUNÇÕES DE DEBUG ======
+
+  updateDebugInfo() {
+    // Atualizar informações de debug na interface
+    const relayStatus = this.relayWs ? 
+      (this.relayWs.readyState === 1 ? '🟢 Conectado' : 
+       this.relayWs.readyState === 0 ? '🔄 Conectando' : 
+       this.relayWs.readyState === 2 ? '🔴 Fechando' : '❌ Desconectado') 
+      : '❌ Não inicializado';
+    
+    document.getElementById('debugRelayStatus').textContent = relayStatus;
+    document.getElementById('debugMyId').textContent = this.currentAnydeskId || 'Não gerado';
+    document.getElementById('debugActiveSession').textContent = this.currentRelaySession || 'Nenhuma';
+    
+    // Contar clientes conectados no servidor (estimativa)
+    if (this.relayWs && this.relayWs.readyState === 1) {
+      // Enviar mensagem para pedir estatísticas
+      this.relayWs.send(JSON.stringify({
+        type: 'get_stats'
+      }));
+    }
+  }
+
+  testRelayConnection() {
+    if (!this.relayWs || this.relayWs.readyState !== 1) {
+      document.getElementById('debugLastMessage').textContent = '❌ WebSocket não conectado';
+      this.showNotification('WebSocket não está conectado', 'error');
+      return;
+    }
+
+    // Enviar mensagem de teste
+    const testMessage = {
+      type: 'test_ping',
+      timestamp: Date.now(),
+      from: this.currentAnydeskId || 'unknown'
+    };
+
+    this.relayWs.send(JSON.stringify(testMessage));
+    document.getElementById('debugLastMessage').textContent = `📤 Teste enviado: ${new Date().toLocaleTimeString()}`;
+    this.showNotification('Mensagem de teste enviada', 'info');
+  }
+
+  // Função para lidar com fim de sessão
+  handleSessionEnded(sessionId) {
+    console.log('Sessão encerrada:', sessionId);
+    
+    // Parar captura de tela se ativa
+    if (this.relayScreenInterval) {
+      clearInterval(this.relayScreenInterval);
+      this.relayScreenInterval = null;
+    }
+    
+    // Limpar sessão atual
+    this.currentRelaySession = null;
+    
+    // Resetar interface
+    document.getElementById('sessionControls').style.display = 'none';
+    document.getElementById('remoteScreen').style.display = 'none';
+    document.getElementById('connectionRequests').style.display = 'none';
+    document.getElementById('connectionStatus').style.display = 'none';
+    
+    this.showNotification('Sessão encerrada', 'info');
   }
 }
 

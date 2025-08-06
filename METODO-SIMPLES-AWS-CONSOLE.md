@@ -1,3 +1,84 @@
+# 🌐 MÉTODO MAIS SIMPLES - AWS CONSOLE (SEM SSH)
+
+## 🎯 ACESSO DIRETO VIA NAVEGADOR
+
+**Não precisa de chave SSH!** Use o próprio console da AWS:
+
+### **Passo 1: Acessar AWS Console**
+1. Vá para: https://console.aws.amazon.com/
+2. Faça login na sua conta AWS
+3. Navegue para: **EC2** → **Instances**
+
+### **Passo 2: Conectar à instância**
+1. **Encontre a instância** com IP `54.232.138.198`
+2. **Selecione a instância** (checkbox)
+3. **Clique no botão "Connect"** (no topo)
+4. **Selecione "EC2 Instance Connect"**
+5. **Username:** `ubuntu` (deixe como está)
+6. **Clique "Connect"**
+
+Isso abrirá um terminal no navegador!
+
+---
+
+## 🔧 COMANDOS PARA EXECUTAR NO TERMINAL AWS
+
+### **1. Fazer backup do arquivo atual:**
+```bash
+cp /home/ubuntu/remote-control-relay/server.js /home/ubuntu/remote-control-relay/server.js.backup-$(date +%Y%m%d_%H%M%S)
+```
+
+### **2. Parar o serviço:**
+```bash
+sudo systemctl stop remote-relay
+```
+
+### **3. Verificar se parou:**
+```bash
+sudo systemctl status remote-relay
+```
+
+### **4. Editar o arquivo (método 1 - nano):**
+```bash
+nano /home/ubuntu/remote-control-relay/server.js
+```
+
+**OU**
+
+### **4. Substituir arquivo completo (método 2 - mais seguro):**
+```bash
+# Primeiro, vamos ver o conteúdo atual
+head -10 /home/ubuntu/remote-control-relay/server.js
+
+# Criar novo arquivo
+cat > /home/ubuntu/remote-control-relay/server.js << 'EOF'
+[AQUI VOCÊ COLA O CONTEÚDO NOVO - VOU PREPARAR PARA VOCÊ]
+EOF
+```
+
+### **5. Iniciar serviço novamente:**
+```bash
+sudo systemctl start remote-relay
+```
+
+### **6. Verificar se funcionou:**
+```bash
+sudo systemctl status remote-relay
+```
+
+### **7. Ver logs:**
+```bash
+sudo journalctl -u remote-relay -n 20
+```
+
+---
+
+## 📋 CONTEÚDO PARA COLAR (ARQUIVO server.js ATUALIZADO)
+
+Vou preparar o comando completo para você copiar e colar:
+
+```bash
+cat > /home/ubuntu/remote-control-relay/server.js << 'EOF'
 const WebSocket = require('ws');
 const express = require('express');
 const http = require('http');
@@ -27,10 +108,11 @@ class RemoteControlRelayServer {
     // Health check
     this.app.get('/health', (req, res) => {
       res.json({ 
-        status: 'online',
+        status: 'ok',
+        timestamp: new Date().toISOString(),
         clients: this.clients.size,
         sessions: this.sessions.size,
-        uptime: process.uptime()
+        server: 'AWS EC2'
       });
     });
 
@@ -43,7 +125,9 @@ class RemoteControlRelayServer {
         totalClients: this.clients.size,
         onlineClients: onlineClients.length,
         activeSessions: this.sessions.size,
-        serverTime: new Date().toISOString()
+        serverTime: new Date().toISOString(),
+        uptime: process.uptime(),
+        server: 'AWS EC2 São Paulo'
       });
     });
   }
@@ -453,3 +537,18 @@ if (require.main === module) {
 }
 
 module.exports = RemoteControlRelayServer;
+EOF
+```
+
+---
+
+## ✅ RESUMO DO PROCESSO
+
+1. **AWS Console** → EC2 → Instances → Connect → EC2 Instance Connect
+2. **Backup:** `cp /home/ubuntu/remote-control-relay/server.js /home/ubuntu/remote-control-relay/server.js.backup-$(date +%Y%m%d_%H%M%S)`
+3. **Parar:** `sudo systemctl stop remote-relay`
+4. **Colar comando completo** acima (criar arquivo novo)
+5. **Iniciar:** `sudo systemctl start remote-relay`
+6. **Verificar:** `sudo systemctl status remote-relay`
+
+**Essa é a forma mais fácil sem precisar de SSH!**

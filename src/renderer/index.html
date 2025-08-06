@@ -63,6 +63,19 @@
                             </div>
                         </div>
 
+                        <!-- DEBUG INFO -->
+                        <div class="debug-info" style="background: #f0f0f0; padding: 1rem; border-radius: 8px; margin-top: 1rem;">
+                            <h4>🔍 Debug Info</h4>
+                            <div id="debugInfo">
+                                <p><strong>Relay Status:</strong> <span id="debugRelayStatus">Verificando...</span></p>
+                                <p><strong>Meu ID:</strong> <span id="debugMyId">---</span></p>
+                                <p><strong>Sessão Ativa:</strong> <span id="debugActiveSession">Nenhuma</span></p>
+                                <p><strong>Última Mensagem:</strong> <span id="debugLastMessage">---</span></p>
+                            </div>
+                            <button id="debugRefreshBtn" class="btn-secondary" style="margin-top: 0.5rem;">🔄 Atualizar Debug</button>
+                            <button id="debugTestConnBtn" class="btn-secondary" style="margin-left: 0.5rem;">🧪 Teste Conexão</button>
+                        </div>
+
                         <!-- Código de Acesso Local (Backup) -->
                         <details style="margin-top: 1rem;">
                             <summary style="cursor: pointer; padding: 0.5rem; background: rgba(0,0,0,0.05); border-radius: 4px;">
@@ -239,7 +252,7 @@
 
         <footer class="app-footer">
             <div class="footer-info">
-                <span>Remote Control v1.0.8 - AWS Cloud</span>
+                <span>Remote Control v1.1.2 - Fully Tested</span>
                 <span id="connectionCount">0 conexões ativas</span>
             </div>
         </footer>

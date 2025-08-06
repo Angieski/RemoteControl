@@ -106,10 +106,8 @@ class RemoteControlApp {
     // Menu da aplicação
     this.createMenu();
 
-    // DevTools apenas em desenvolvimento
-    if (process.env.NODE_ENV === 'development') {
-      this.mainWindow.webContents.openDevTools();
-    }
+    // DevTools habilitado para debug
+    this.mainWindow.webContents.openDevTools();
   }
 
 
@@ -123,6 +121,14 @@ class RemoteControlApp {
             accelerator: 'CmdOrCtrl+G',
             click: () => {
               this.mainWindow.webContents.send('generate-code');
+            }
+          },
+          { type: 'separator' },
+          {
+            label: 'DevTools / Console',
+            accelerator: 'F12',
+            click: () => {
+              this.mainWindow.webContents.toggleDevTools();
             }
           },
           { type: 'separator' },
@@ -309,7 +315,7 @@ class RemoteControlApp {
           case 'keyDown':
             if (key) {
               try {
-                robot.keyPress(key.toLowerCase());
+                robot.keyTap(key.toLowerCase());
               } catch (e) {
                 console.log('Tecla não suportada:', key);
               }

@@ -14,7 +14,7 @@ npm run build:linux
 npm run build:mac
 
 # Todas as plataformas
-npm run build:all
+npm run build:alla
 ```
 
 ### **Desenvolvimento**

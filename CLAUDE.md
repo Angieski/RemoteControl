@@ -44,8 +44,11 @@ npm run server     # Backend WebSocket server only (port 3000)
 
 ### Building Distributables
 ```bash
-npm run build:win  # Windows executable (NSIS installer + portable)
-npm run build:all  # All platforms (Windows, Linux AppImage/DEB, macOS DMG)
+npm run build:win    # Windows executable (NSIS installer + portable)
+npm run build:linux  # Linux (AppImage + DEB)
+npm run build:mac    # macOS (DMG for Intel + ARM64)
+npm run build:all    # All platforms (Windows, Linux, macOS)
+npm run pack         # Package without installer (for testing)
 ```
 
 ### Relay Server (separate deployment)
@@ -53,6 +56,7 @@ npm run build:all  # All platforms (Windows, Linux AppImage/DEB, macOS DMG)
 cd relay-server
 npm install
 npm start          # Production relay server (port 8080)
+npm run dev        # Development mode with nodemon
 ```
 
 ## Critical Dependencies
@@ -64,8 +68,9 @@ npm start          # Production relay server (port 8080)
 - `ws`: WebSocket server/client communication
 
 ### Version Tracking
-- Current app version: `1.0.2` (check package.json)
-- Increment version for each build: `1.0.2` → `1.0.3`
+- Current app version: `1.1.2` (check package.json)
+- Increment version for each build: `1.1.2` → `1.1.3`
+- Relay server version: `1.0.0` (separate versioning in relay-server/package.json)
 
 ## Authentication System
 
@@ -110,10 +115,11 @@ The app uses a **6-digit temporary access code system**:
 - **IP Detection**: WebRTC-based local IP discovery
 
 ### Internet Mode (Relay)
-- **Server URL**: Configurable in `relay-client.js` (line 10)
-- **Default**: `ws://localhost:8080` (change for production)
+- **Server URL**: Configurable in `relay-client.js` (line 11)
+- **Production URL**: `ws://54.232.138.198:8080` (AWS EC2 instance)
 - **ID System**: 9-digit unique identifiers like AnyDesk
 - **Connection Flow**: ID → Request → Approval → Session
+- **Features**: Heartbeat monitoring, session cleanup, connection requests
 
 ## Security Considerations
 
@@ -136,9 +142,14 @@ The app uses a **6-digit temporary access code system**:
 - **Connection status**: Fixed dual connection status display
 
 ### Testing Integration
-- **No specific test framework configured**
-- Test via npm run dev and manual verification
-- Check both local network and relay connectivity modes
+- **No specific test framework configured** 
+- Manual testing workflow:
+  1. Use `npm run dev` for development testing
+  2. Test both host and viewer modes in same session
+  3. Verify local network functionality (port 3000)
+  4. Test relay server integration if internet features modified
+  5. Build and test executable with `npm run pack` before full distribution
+- Quick relay server test: `cd relay-server && npm run test`
 
 ## Deployment Documentation
 
@@ -156,10 +167,11 @@ The app uses a **6-digit temporary access code system**:
 - **Relay functionality**: Extend `relay-client.js` and bridge integration
 
 ### Testing Changes
-- Test local connections first (npm run dev)
+- Always test local connections first (`npm run dev`)
+- Test both host and viewer modes thoroughly
 - Verify relay integration if internet features modified
-- Build and test executable before distribution
-- Check both host and viewer modes
+- Use `npm run pack` to test build without creating installer
+- Test final executable on clean system before distribution
 
 ## Development Workflow Integration
 
@@ -171,3 +183,37 @@ When making changes:
 5. Update version in package.json
 6. Build executable with `npm run build:win`
 7. Test built executable on clean system
+
+## Relay Server Management
+
+### Production Server
+- **Location**: AWS EC2 instance at `54.232.138.198:8080`
+- **Status endpoints**: `/health`, `/stats`
+- **Features**: Auto-cleanup of offline clients and expired sessions
+- **Monitoring**: Built-in heartbeat system and connection logging
+
+### Client Connection Process
+1. **Host Mode**: Register as host → Receive 9-digit ID → Wait for connections
+2. **Viewer Mode**: Register as viewer → Request connection to target ID → Wait for approval
+3. **Session**: Bidirectional data relay for screen capture and input events
+
+## Key IPC Methods (main.js)
+- `generate-access-code`: Generate 6-digit temporary codes
+- `get-server-info`: Get local server status and client count
+- `capture-screen-relay`: Screen capture for relay integration
+- `send-input-relay`: Process remote input commands
+- `start-server`: Initialize local WebSocket server
+- `stop-server`: Shutdown server and cleanup connections
+
+## Platform-Specific Considerations
+
+### Windows
+- Requires Visual Studio Build Tools for robotjs compilation
+- Icon path detection with multiple fallback locations
+- NSIS installer configuration with desktop/start menu shortcuts
+- Portable executable also generated alongside installer
+
+### Cross-Platform Dependencies
+- `@hurdlegroup/robotjs@0.12.3`: **CRITICAL** - Use exact version for Node.js 22 compatibility
+- Native dependency rebuild required after Node.js version changes
+- Screen capture permissions vary by platform (macOS requires explicit permission)
