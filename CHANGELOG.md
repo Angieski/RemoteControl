@@ -21,7 +21,6 @@
 - **`Remote Control-1.0.2-x64.exe`** ← **USE ESTA VERSÃO**
 
 ---
-
 ## 🚀 **Versão 1.0.1** - Correções Críticas (2025-08-04)
 
 ### ✅ **Problemas Resolvidos:**
