@@ -9,7 +9,10 @@
       "Bash(start:*)",
       "Bash(\"C:\\dev\\RemoteControl\\dist\\win-unpacked\\Remote Control.exe\")",
       "Bash(electron test-screen-capture.js)",
-      "Bash(npx electron:*)"
+      "Bash(npx electron:*)",
+      "Bash(npm:*)",
+      "Bash(taskkill:*)",
+      "Bash(powershell:*)"
     ],
     "deny": []
   }

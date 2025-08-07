@@ -150,3 +150,34 @@ recordings/
 # Local configuration
 config.local.json
 .env.local
+.claude/settings.local.json
+
+# Test files and demos (temporary)
+test-*.js
+demo-*.js
+*-demo.js
+test-*.html
+*.test.js
+*.spec.js
+
+# Screenshots and captures
+*.jpg
+*.jpeg
+*.png
+*.gif
+test-screenshot.*
+screenshot-demo.*
+
+# Server logs
+server.log
+*.log
+
+# AWS deployment scripts (keep versioned but ignore if sensitive)
+# update-aws-server.ps1
+# update-aws-server.sh
+
+# Temporary build artifacts
+app.asar.unpacked/
+win-unpacked/
+mac/
+linux-unpacked/

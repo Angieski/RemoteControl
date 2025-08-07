@@ -95,7 +95,6 @@ class InputController {
     try {
       if (modifiers.length > 0) {
         // Pressionar com modificadores
-        const keys = [...modifiers, key];
         robot.keyTap(key, modifiers);
       } else {
         robot.keyTap(key);
