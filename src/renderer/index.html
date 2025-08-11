@@ -26,13 +26,13 @@
             <!-- Aba Host -->
             <div class="tab-content active" id="host">
                 <div class="card">
-                    <h2>🖥️ Modo Host - Aguardar Conexões</h2>
+                    <h2>Modo Host - Aguardar Conexões</h2>
                     <p>Permita que outros se conectem ao seu computador via internet</p>
                     
                     <div class="host-controls">
                         <!-- ID Único estilo AnyDesk -->
                         <div class="anydesk-id-display" id="anydeskIdDisplay" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem; text-align: center;">
-                            <h3 style="margin: 0 0 0.5rem 0; font-size: 1.1rem;">🆔 Seu ID Remote Control</h3>
+                            <h3 style="margin: 0 0 0.5rem 0; font-size: 1.1rem;">Seu ID Remote Control</h3>
                             <div style="font-size: 2.5rem; font-weight: bold; letter-spacing: 0.2rem; font-family: 'Courier New', monospace; margin: 0.5rem 0;">
                                 <span id="anydeskId">000 000 000</span>
                             </div>
@@ -50,14 +50,14 @@
                         <!-- Status da Conexão -->
                         <div class="connection-status-host" id="connectionStatusHost" style="background: rgba(72, 187, 120, 0.1); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
                             <h4>📡 Status do Servidor</h4>
-                            <p><strong>Servidor Local:</strong> <span id="localServerStatusHost">🟢 Online</span></p>
-                            <p><strong>Servidor Relay:</strong> <span id="relayServerStatusHost">🔄 Conectando...</span></p>
+                            <p><strong>Servidor Local:</strong> <span id="localServerStatusHost">Online</span></p>
+                            <p><strong>Servidor Relay:</strong> <span id="relayServerStatusHost">Conectando...</span></p>
                             <p><strong>Aguardando conexões em:</strong> <span id="listeningStatus">ID ativo</span></p>
                         </div>
 
                         <!-- Solicitações de Conexão -->
                         <div class="connection-requests" id="connectionRequests" style="display: none;">
-                            <h4>🔔 Solicitações de Conexão</h4>
+                            <h4>Solicitações de Conexão</h4>
                             <div id="requestsList">
                                 <!-- Requests aparecerão aqui dinamicamente -->
                             </div>
@@ -66,21 +66,21 @@
                         <!-- Controles de Sessão Host -->
                         <div class="host-session-controls" id="hostSessionControls" style="display: none; text-align: center; margin-top: 1rem;">
                             <button id="disconnectHostBtn" class="btn-danger" style="font-size: 1.1rem; padding: 0.8rem 2rem;">
-                                ❌ Encerrar Sessão
+                                Encerrar Sessão
                             </button>
                         </div>
 
                         <!-- DEBUG INFO -->
                         <div class="debug-info" style="background: #f0f0f0; padding: 1rem; border-radius: 8px; margin-top: 1rem;">
-                            <h4>🔍 Debug Info</h4>
+                            <h4>Debug Info</h4>
                             <div id="debugInfo">
                                 <p><strong>Relay Status:</strong> <span id="debugRelayStatus">Verificando...</span></p>
                                 <p><strong>Meu ID:</strong> <span id="debugMyId">---</span></p>
                                 <p><strong>Sessão Ativa:</strong> <span id="debugActiveSession">Nenhuma</span></p>
                                 <p><strong>Última Mensagem:</strong> <span id="debugLastMessage">---</span></p>
                             </div>
-                            <button id="debugRefreshBtn" class="btn-secondary" style="margin-top: 0.5rem;">🔄 Atualizar Debug</button>
-                            <button id="debugTestConnBtn" class="btn-secondary" style="margin-left: 0.5rem;">🧪 Teste Conexão</button>
+                            <button id="debugRefreshBtn" class="btn-secondary" style="margin-top: 0.5rem;">Atualizar Debug</button>
+                            <button id="debugTestConnBtn" class="btn-secondary" style="margin-left: 0.5rem;">Teste Conexão</button>
                         </div>
 
                         <!-- Código de Acesso Local (Backup) -->
@@ -132,7 +132,7 @@
                     <div class="viewer-controls">
                         <!-- Conexão Principal via ID -->
                         <div class="anydesk-connect" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem;">
-                            <h3 style="margin: 0 0 1rem 0; font-size: 1.1rem;">🌐 Conectar via Internet</h3>
+                            <h3 style="margin: 0 0 1rem 0; font-size: 1.1rem;">Conectar via Internet</h3>
                             
                             <div class="input-group" style="margin-bottom: 1rem;">
                                 <label for="remoteId" style="color: white; font-weight: bold;">ID do Computador Remoto:</label>
@@ -154,7 +154,7 @@
                         <!-- Status da Conexão -->
                         <div class="connection-status" id="connectionStatus" style="display: none;">
                             <h3>📡 Status da Conexão</h3>
-                            <p><strong>Servidor Relay:</strong> <span id="relayConnectionStatus">🔄 Conectando...</span></p>
+                            <p><strong>Servidor Relay:</strong> <span id="relayConnectionStatus">Conectando...</span></p>
                             <p><strong>Sessão Remota:</strong> <span id="connectionInfo">Aguardando aprovação...</span></p>
                             <p><strong>ID de Destino:</strong> <span id="targetIdDisplay">---</span></p>
                         </div>
@@ -188,7 +188,7 @@
                         <!-- Controles da Sessão -->
                         <div class="session-controls" id="sessionControls" style="display: none; text-align: center; margin-top: 1rem;">
                             <button id="disconnectBtn" class="btn-danger" style="font-size: 1.1rem; padding: 0.8rem 2rem;">
-                                ❌ Desconectar Sessão
+                                Desconectar Sessão
                             </button>
                         </div>
                     </div>
@@ -196,7 +196,7 @@
                     <!-- Tela Remota -->
                     <div class="remote-screen" id="remoteScreen" style="display: none; margin-top: 1rem;">
                         <div class="screen-header" style="background: #333; color: white; padding: 0.5rem 1rem; border-radius: 8px 8px 0 0;">
-                            <span>🖥️ Controle Remoto Ativo - ID: <span id="activeSessionId">---</span></span>
+                            <span>Controle Remoto Ativo - ID: <span id="activeSessionId">---</span></span>
                             <span style="float: right;">
                                 <button id="fullscreenBtn" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); color: white; cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 4px; margin-right: 0.5rem;" title="Maximizar tela">⛶ Maximizar</button>
                                 <button id="minimizeBtn" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); color: white; cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 4px; display: none;" title="Minimizar tela">🗗 Minimizar</button>
@@ -204,7 +204,7 @@
                         </div>
                         <canvas id="screenCanvas" style="border: 2px solid #333; border-top: none; border-radius: 0 0 8px 8px; max-width: 100%; height: auto;"></canvas>
                         <div class="screen-footer" style="background: #f5f5f5; padding: 0.5rem 1rem; border-radius: 0 0 8px 8px; font-size: 0.9rem; color: #666;">
-                            <span>💡 Use mouse e teclado normalmente para controlar o computador remoto</span>
+                            <span>Use mouse e teclado normalmente para controlar o computador remoto</span>
                         </div>
                     </div>
                 </div>
