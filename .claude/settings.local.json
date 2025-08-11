@@ -12,7 +12,9 @@
       "Bash(npx electron:*)",
       "Bash(npm:*)",
       "Bash(taskkill:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(if exist dist rmdir /s /q dist)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

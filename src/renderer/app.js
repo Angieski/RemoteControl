@@ -19,10 +19,13 @@ class RemoteControlClient {
     this.detectLocalIP();
     this.initializeRelayIntegration();
     
-    // Conectar ao relay automaticamente
+    // Aguardar relay-client.js carregar e conectar automaticamente
     setTimeout(() => {
-      this.connectToRelayServer();
-    }, 2000);
+      if (window.relayClient && !window.relayClient.isConnected) {
+        console.log('Iniciando conexão relay via relay-client.js...');
+        window.relayClient.connectToRelay();
+      }
+    }, 1000);
   }
 
   initializeUI() {
@@ -47,6 +50,8 @@ class RemoteControlClient {
       this.revokeCurrentCode();
     });
 
+    // REMOVIDO: Event listeners movidos para relay-client.js
+
     // Viewer controls
     document.getElementById('connectBtn').addEventListener('click', () => {
       this.connectAsViewer();
@@ -66,10 +71,7 @@ class RemoteControlClient {
       this.generateNewAnydeskId();
     });
 
-    // Viewer relay controls
-    document.getElementById('connectViaIdBtn').addEventListener('click', () => {
-      this.connectViaAnydeskId();
-    });
+    // REMOVIDO: Event listeners duplicados movidos para relay-client.js
 
     // Auto-format ID input (add spaces)
     document.getElementById('remoteId').addEventListener('input', (e) => {
@@ -83,6 +85,15 @@ class RemoteControlClient {
 
     document.getElementById('debugTestConnBtn').addEventListener('click', () => {
       this.testRelayConnection();
+    });
+
+    // Fullscreen controls
+    document.getElementById('fullscreenBtn').addEventListener('click', () => {
+      this.maximizeRemoteScreen();
+    });
+
+    document.getElementById('minimizeBtn').addEventListener('click', () => {
+      this.minimizeRemoteScreen();
     });
 
     // Settings
@@ -429,11 +440,13 @@ class RemoteControlClient {
       this.screenRequestInterval = null;
     }
     
+    // Fechar todas as telas remotas
+    this.closeAllRemoteScreens();
+    
     // Reset UI
     document.getElementById('connectBtn').style.display = 'inline-block';
     document.getElementById('disconnectBtn').style.display = 'none';
     document.getElementById('connectionStatus').style.display = 'none';
-    document.getElementById('remoteScreen').style.display = 'none';
     this.updateConnectionStatus('Desconectado', false);
   }
 
@@ -486,7 +499,7 @@ class RemoteControlClient {
           type: 'screen_request'
         }));
       }
-    }, 100); // 10 FPS
+    }, 150); // ~6.5 FPS - Melhorar performance
   }
 
   handleScreenshot(data) {
@@ -508,70 +521,157 @@ class RemoteControlClient {
   setupCanvasEvents() {
     if (!this.canvas) return;
 
+    // Focus canvas para receber eventos de teclado
+    this.canvas.setAttribute('tabindex', '0');
+    this.canvas.focus();
+    
+    console.log('🎮 Configurando controles do canvas...');
+
+    // Mouse move
     this.canvas.addEventListener('mousemove', (e) => {
-      if (!this.isViewer) return;
+      if (!this.isViewer && !this.currentRelaySession) return;
+      
+      const rect = this.canvas.getBoundingClientRect();
+      const scaleX = this.canvas.width / rect.width;
+      const scaleY = this.canvas.height / rect.height;
+      
+      const x = Math.floor((e.clientX - rect.left) * scaleX);
+      const y = Math.floor((e.clientY - rect.top) * scaleY);
+      
       this.sendInputEvent({
         type: 'mouseMove',
-        x: e.offsetX,
-        y: e.offsetY
+        x: x,
+        y: y
       });
     });
 
+    // Mouse click (left)
     this.canvas.addEventListener('click', (e) => {
-      if (!this.isViewer) return;
+      if (!this.isViewer && !this.currentRelaySession) return;
+      e.preventDefault();
+      
+      const rect = this.canvas.getBoundingClientRect();
+      const scaleX = this.canvas.width / rect.width;
+      const scaleY = this.canvas.height / rect.height;
+      
+      const x = Math.floor((e.clientX - rect.left) * scaleX);
+      const y = Math.floor((e.clientY - rect.top) * scaleY);
+      
       this.sendInputEvent({
         type: 'mouseClick',
-        x: e.offsetX,
-        y: e.offsetY,
+        x: x,
+        y: y,
         button: 'left'
       });
+      
+      console.log(`🖱️ Click esquerdo em (${x}, ${y})`);
     });
 
+    // Mouse right click
     this.canvas.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      if (!this.isViewer) return;
+      if (!this.isViewer && !this.currentRelaySession) return;
+      
+      const rect = this.canvas.getBoundingClientRect();
+      const scaleX = this.canvas.width / rect.width;
+      const scaleY = this.canvas.height / rect.height;
+      
+      const x = Math.floor((e.clientX - rect.left) * scaleX);
+      const y = Math.floor((e.clientY - rect.top) * scaleY);
+      
       this.sendInputEvent({
         type: 'mouseClick',
-        x: e.offsetX,
-        y: e.offsetY,
+        x: x,
+        y: y,
         button: 'right'
       });
+      
+      console.log(`🖱️ Click direito em (${x}, ${y})`);
     });
 
+    // Mouse wheel
     this.canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
-      if (!this.isViewer) return;
+      if (!this.isViewer && !this.currentRelaySession) return;
+      
+      const rect = this.canvas.getBoundingClientRect();
+      const scaleX = this.canvas.width / rect.width;
+      const scaleY = this.canvas.height / rect.height;
+      
+      const x = Math.floor((e.clientX - rect.left) * scaleX);
+      const y = Math.floor((e.clientY - rect.top) * scaleY);
+      
       this.sendInputEvent({
         type: 'mouseWheel',
-        x: e.offsetX,
-        y: e.offsetY,
+        x: x,
+        y: y,
         deltaX: e.deltaX,
         deltaY: e.deltaY
       });
     });
 
-    // Keyboard events (canvas needs to be focused)
-    this.canvas.setAttribute('tabindex', '0');
-    
+    // Keyboard events
     this.canvas.addEventListener('keydown', (e) => {
+      if (!this.isViewer && !this.currentRelaySession) return;
       e.preventDefault();
-      if (!this.isViewer) return;
+      
       this.sendInputEvent({
-        type: 'keyPress',
+        type: 'keyDown',
         key: e.key,
+        code: e.code,
+        keyCode: e.keyCode,
+        modifiers: this.getModifiers(e)
+      });
+      
+      console.log(`⌨️ Tecla pressionada: ${e.key}`);
+    });
+
+    this.canvas.addEventListener('keyup', (e) => {
+      if (!this.isViewer && !this.currentRelaySession) return;
+      e.preventDefault();
+      
+      this.sendInputEvent({
+        type: 'keyUp',
+        key: e.key,
+        code: e.code,
+        keyCode: e.keyCode,
         modifiers: this.getModifiers(e)
       });
     });
+
+    // Focus no canvas quando clicado
+    this.canvas.addEventListener('mousedown', () => {
+      this.canvas.focus();
+    });
+    
+    console.log('✅ Controles do canvas configurados');
   }
 
   sendInputEvent(event) {
+    // Tentar enviar via relay client primeiro (conexão via internet)
+    if (window.relayClient && window.relayClient.currentSession) {
+      window.relayClient.sendToRelay({
+        type: 'relay_data',
+        sessionId: window.relayClient.currentSession.sessionId,
+        dataType: 'input',
+        data: event
+      });
+      console.log('📡 Input enviado via relay:', event.type);
+      return;
+    }
+    
+    // Fallback para conexão WebSocket local
     const activeWs = this.remoteWs || this.ws;
     if (activeWs && activeWs.readyState === WebSocket.OPEN && this.isViewer) {
       activeWs.send(JSON.stringify({
         type: 'input_event',
         event: event
       }));
+      console.log('🌐 Input enviado via WebSocket local:', event.type);
+      return;
     }
+    
+    console.warn('❌ Nenhuma conexão disponível para enviar input');
   }
 
   getModifiers(e) {
@@ -587,20 +687,37 @@ class RemoteControlClient {
     const indicator = document.getElementById('serverStatus');
     const info = document.getElementById('serverInfo');
     const localStatus = document.getElementById('localServerStatus');
+    const localServerStatusHost = document.getElementById('localServerStatusHost');
     
     if (isOnline) {
-      indicator.classList.add('online');
-      info.textContent = 'Servidor Online';
+      if (indicator) indicator.classList.add('online');
+      if (info) info.textContent = 'Servidor Online';
+      
+      // Atualizar status na aba viewer
       if (localStatus) {
-        localStatus.textContent = 'Online';
+        localStatus.textContent = '🟢 Online';
         localStatus.style.color = '#38a169';
       }
+      
+      // Atualizar status na aba host
+      if (localServerStatusHost) {
+        localServerStatusHost.textContent = '🟢 Online';
+        localServerStatusHost.style.color = '#38a169';
+      }
     } else {
-      indicator.classList.remove('online');
-      info.textContent = 'Servidor Offline';
+      if (indicator) indicator.classList.remove('online');
+      if (info) info.textContent = 'Servidor Offline';
+      
+      // Atualizar status na aba viewer
       if (localStatus) {
-        localStatus.textContent = 'Offline';
+        localStatus.textContent = '❌ Offline';
         localStatus.style.color = '#e53e3e';
+      }
+      
+      // Atualizar status na aba host
+      if (localServerStatusHost) {
+        localServerStatusHost.textContent = '❌ Offline';
+        localServerStatusHost.style.color = '#e53e3e';
       }
     }
   }
@@ -640,6 +757,43 @@ class RemoteControlClient {
       sessionsList.innerHTML = '<p>1 viewer conectado</p>';
     } else {
       sessionsList.innerHTML = '<p class="no-sessions">Nenhuma sessão ativa</p>';
+    }
+  }
+
+  // === INTEGRAÇÃO COM RELAY CLIENT ===
+  
+  connectViaRelayId() {
+    const remoteIdInput = document.getElementById('remoteId');
+    const remoteId = remoteIdInput.value.replace(/\s/g, ''); // Remover espaços
+    
+    if (!remoteId || remoteId.length !== 9) {
+      alert('Por favor, digite um ID válido de 9 dígitos');
+      remoteIdInput.focus();
+      return;
+    }
+    
+    // Usar o relayClient global se disponível
+    if (window.relayClient) {
+      // Simular input no campo do relay client
+      const relayRemoteInput = document.getElementById('remoteId');
+      if (relayRemoteInput) {
+        relayRemoteInput.value = remoteId;
+      }
+      
+      // Chamar método do relay client
+      window.relayClient.connectToRemoteId();
+      
+      // Mostrar status
+      const connectionStatus = document.getElementById('connectionStatus');
+      if (connectionStatus) {
+        connectionStatus.style.display = 'block';
+        document.getElementById('targetIdDisplay').textContent = remoteId;
+      }
+      
+      console.log('Tentativa de conexão via relay para ID:', remoteId);
+    } else {
+      alert('Relay client não inicializado. Aguarde e tente novamente.');
+      console.error('Relay client não disponível');
     }
   }
 
@@ -700,145 +854,11 @@ class RemoteControlClient {
     console.log(`ID AnyDesk gerado: ${formattedId} (${id})`);
   }
 
-  // Nova função para registrar diretamente no relay
-  registerWithRelayServer() {
-    // Criar conexão WebSocket direta se não existir
-    if (!this.relayWs || this.relayWs.readyState !== WebSocket.OPEN) {
-      this.connectToRelayServer();
-      return;
-    }
-    
-    // Registrar imediatamente se conectado
-    this.relayWs.send(JSON.stringify({
-      type: 'register_client',
-      clientType: 'host',
-      deviceInfo: {
-        os: navigator.platform,
-        userAgent: navigator.userAgent.substring(0, 100)
-      }
-    }));
-    
-    this.updateRelayStatus('🟢 Conectado', '🔄 Registrando...');
-    console.log(`Registro enviado para relay`);
-  }
+  // REMOVIDO: registerWithRelayServer() - agora só no relay-client.js
 
-  // Conectar ao servidor relay
-  connectToRelayServer() {
-    if (this.relayWs && this.relayWs.readyState === WebSocket.OPEN) {
-      return; // Já conectado
-    }
+  // REMOVIDO: connectToRelayServer() - agora só no relay-client.js
 
-    try {
-      this.updateRelayStatus('🔄 Conectando...', '🔄 Conectando ao relay...');
-      this.relayWs = new WebSocket('ws://54.232.138.198:8080');
-
-      this.relayWs.onopen = () => {
-        console.log('Conectado ao servidor relay AWS');
-        this.updateRelayStatus('🟢 Conectado', '🟢 Online');
-        
-        // Registrar automaticamente como host após conectar
-        if (!this.currentAnydeskId) {
-          this.registerWithRelayServer();
-        }
-      };
-
-      this.relayWs.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          this.handleRelayMessage(message);
-        } catch (error) {
-          console.error('Erro ao processar mensagem relay:', error);
-        }
-      };
-
-      this.relayWs.onclose = () => {
-        console.log('Desconectado do servidor relay');
-        this.updateRelayStatus('🔴 Desconectado', '🔴 Offline');
-        // Tentar reconectar em 5 segundos
-        setTimeout(() => this.connectToRelayServer(), 5000);
-      };
-
-      this.relayWs.onerror = (error) => {
-        console.error('Erro WebSocket relay:', error);
-        this.updateRelayStatus('❌ Erro', '❌ Erro de conexão');
-      };
-
-    } catch (error) {
-      console.error('Erro ao conectar relay:', error);
-      this.updateRelayStatus('❌ Erro', '❌ Falha na conexão');
-    }
-  }
-
-  // Processar mensagens do relay
-  handleRelayMessage(message) {
-    // Atualizar debug com última mensagem
-    document.getElementById('debugLastMessage').textContent = `📥 ${message.type} (${new Date().toLocaleTimeString()})`;
-    
-    console.log('Mensagem relay recebida:', message);
-    
-    switch (message.type) {
-      case 'server_hello':
-        console.log('Conectado ao servidor relay:', message.message);
-        break;
-        
-      case 'client_registered':
-        console.log(`Cliente registrado com ID: ${message.clientId}`);
-        this.currentAnydeskId = message.clientId;
-        const formattedId = `${message.clientId.slice(0,3)} ${message.clientId.slice(3,6)} ${message.clientId.slice(6,9)}`;
-        document.getElementById('anydeskId').textContent = formattedId;
-        this.updateRelayStatus('🟢 Conectado', `🆔 ID: ${formattedId}`);
-        break;
-        
-      case 'connection_request':
-        this.showConnectionRequest(message.requesterId, message.sessionId, message.requestType);
-        break;
-        
-      case 'connection_requested':
-        console.log('Solicitação enviada:', message.message);
-        document.getElementById('connectionInfo').textContent = message.message;
-        break;
-        
-      case 'connection_accepted':
-        this.handleConnectionAccepted(message.sessionId);
-        break;
-        
-      case 'connection_rejected':
-        this.handleConnectionRejected();
-        break;
-        
-      case 'connection_established':
-        console.log('Conexão estabelecida como host:', message.sessionId);
-        this.currentRelaySession = message.sessionId;
-        this.startRelayScreenCapture();
-        break;
-        
-      case 'session_ended':
-        this.handleSessionEnded(message.sessionId);
-        break;
-        
-      case 'relay_data':
-        this.handleRelayData(message);
-        break;
-        
-      case 'error':
-        console.error('Erro do servidor relay:', message.message);
-        this.showNotification('Erro: ' + message.message, 'error');
-        break;
-        
-      case 'test_pong':
-        document.getElementById('debugLastMessage').textContent = `📥 Teste OK: ${new Date().toLocaleTimeString()}`;
-        this.showNotification('Teste de conexão OK!', 'success');
-        break;
-        
-      case 'stats_response':
-        console.log('Estatísticas do servidor:', message);
-        break;
-        
-      default:
-        console.log('Tipo de mensagem relay desconhecido:', message.type);
-        document.getElementById('debugLastMessage').textContent = `❓ ${message.type}`;
-    }
-  }
+  // REMOVIDO: handleRelayMessage() - agora só no relay-client.js
 
   // Tratar falha de conexão
   handleConnectFailed(reason, targetId) {
@@ -865,10 +885,8 @@ class RemoteControlClient {
     
     this.showNotification('Conexão estabelecida! Iniciando tela remota...', 'success');
     
-    // Iniciar captura de tela se for host
-    if (this.isHost || this.currentAnydeskId) {
-      this.startRelayScreenCapture();
-    }
+    // Sistema agora usa screen_request/response em vez de captura automática
+    console.log('Conexão estabelecida - aguardando screen_requests');
     
     // Mostrar tela remota se for viewer
     if (!this.isHost && !this.currentAnydeskId) {
@@ -972,7 +990,7 @@ class RemoteControlClient {
       } catch (error) {
         console.error('Erro na captura para relay:', error);
       }
-    }, 200); // 5 FPS
+    }, 250); // 4 FPS - Performance otimizada
   }
 
   // Capturar tela para relay
@@ -1028,6 +1046,29 @@ class RemoteControlClient {
     }
   }
 
+  // Enviar captura de tela via relay
+  async sendScreenToRelay(sessionId) {
+    try {
+      if (window.electronAPI && window.electronAPI.captureScreenRelay) {
+        // Usar API específica do Electron para relay
+        const screenshot = await window.electronAPI.captureScreenRelay();
+        
+        if (screenshot && this.relayWs && this.relayWs.readyState === WebSocket.OPEN) {
+          this.relayWs.send(JSON.stringify({
+            type: 'relay_data',
+            sessionId: sessionId,
+            dataType: 'screen',
+            data: screenshot
+          }));
+        }
+      } else {
+        console.error('electronAPI.captureScreenRelay não disponível');
+      }
+    } catch (error) {
+      console.error('Erro ao enviar tela via relay:', error);
+    }
+  }
+
   // Processar dados do relay
   handleRelayData(message) {
     const { dataType, data } = message;
@@ -1039,6 +1080,11 @@ class RemoteControlClient {
         
       case 'input':
         this.processRelayInput(data);
+        break;
+        
+      case 'screen_request':
+        // Host responde com captura de tela
+        this.sendScreenToRelay(message.sessionId);
         break;
         
       default:
@@ -1199,13 +1245,7 @@ class RemoteControlClient {
     }
   }
 
-  updateRelayStatus(localStatus, relayStatus) {
-    const localStatusElement = document.getElementById('localServerStatusHost');
-    const relayStatusElement = document.getElementById('relayServerStatusHost');
-    
-    if (localStatusElement) localStatusElement.textContent = localStatus;
-    if (relayStatusElement) relayStatusElement.textContent = relayStatus;
-  }
+  // REMOVIDO: updateRelayStatus() - agora só no relay-client.js
 
   showNotification(message, type = 'info') {
     // Criar notificação visual
@@ -1285,42 +1325,7 @@ class RemoteControlClient {
     checkRelay();
   }
 
-  showConnectionRequest(fromId, sessionId, requestType = 'controle') {
-    // Mostrar solicitação de conexão
-    const requestsDiv = document.getElementById('connectionRequests');
-    const requestsList = document.getElementById('requestsList');
-    
-    // Limpar solicitações anteriores
-    requestsList.innerHTML = '';
-    
-    const formattedId = fromId.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3');
-    
-    const requestElement = document.createElement('div');
-    requestElement.className = 'connection-request';
-    requestElement.innerHTML = `
-      <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 1rem; border-radius: 8px; margin: 0.5rem 0;">
-        <h5>🔔 Solicitação de Conexão</h5>
-        <p><strong>ID:</strong> ${formattedId}</p>
-        <p><strong>Tipo:</strong> ${requestType}</p>
-        <p>Deseja permitir o controle remoto?</p>
-        <div style="margin-top: 1rem;">
-          <button onclick="remoteControlClient.acceptConnection('${sessionId}')" 
-                  style="background: #10b981; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; margin-right: 0.5rem; cursor: pointer;">
-            ✅ Aceitar
-          </button>
-          <button onclick="remoteControlClient.rejectConnection('${sessionId}')" 
-                  style="background: #ef4444; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">
-            ❌ Rejeitar
-          </button>
-        </div>
-      </div>
-    `;
-    
-    requestsList.appendChild(requestElement);
-    requestsDiv.style.display = 'block';
-    
-    this.showNotification(`Solicitação de ${formattedId}`, 'info');
-  }
+  // REMOVIDO: showConnectionRequest() - agora só no relay-client.js
 
   acceptConnection(sessionId) {
     if (this.relayWs && this.relayWs.readyState === WebSocket.OPEN) {
@@ -1375,16 +1380,17 @@ class RemoteControlClient {
   // ====== FUNÇÕES DE DEBUG ======
 
   updateDebugInfo() {
-    // Atualizar informações de debug na interface
-    const relayStatus = this.relayWs ? 
-      (this.relayWs.readyState === 1 ? '🟢 Conectado' : 
-       this.relayWs.readyState === 0 ? '🔄 Conectando' : 
-       this.relayWs.readyState === 2 ? '🔴 Fechando' : '❌ Desconectado') 
-      : '❌ Não inicializado';
-    
-    document.getElementById('debugRelayStatus').textContent = relayStatus;
-    document.getElementById('debugMyId').textContent = this.currentAnydeskId || 'Não gerado';
-    document.getElementById('debugActiveSession').textContent = this.currentRelaySession || 'Nenhuma';
+    // Usar informações do relay-client se disponível
+    if (window.relayClient) {
+      const relayStatus = window.relayClient.isConnected ? '🟢 Conectado' : '❌ Desconectado';
+      document.getElementById('debugRelayStatus').textContent = relayStatus;
+      document.getElementById('debugMyId').textContent = window.relayClient.clientId || 'Não gerado';
+      document.getElementById('debugActiveSession').textContent = window.relayClient.currentSession?.sessionId || 'Nenhuma';
+    } else {
+      document.getElementById('debugRelayStatus').textContent = '❌ Relay client não carregado';
+      document.getElementById('debugMyId').textContent = 'N/A';
+      document.getElementById('debugActiveSession').textContent = 'N/A';
+    }
     
     // Contar clientes conectados no servidor (estimativa)
     if (this.relayWs && this.relayWs.readyState === 1) {
@@ -1396,22 +1402,14 @@ class RemoteControlClient {
   }
 
   testRelayConnection() {
-    if (!this.relayWs || this.relayWs.readyState !== 1) {
-      document.getElementById('debugLastMessage').textContent = '❌ WebSocket não conectado';
-      this.showNotification('WebSocket não está conectado', 'error');
-      return;
+    // Usar relay client global em vez de WebSocket direto
+    if (window.relayClient && window.relayClient.isConnected) {
+      document.getElementById('debugLastMessage').textContent = `✅ Relay conectado: ${new Date().toLocaleTimeString()}`;
+      this.showNotification('Sistema relay está funcionando!', 'success');
+    } else {
+      document.getElementById('debugLastMessage').textContent = '❌ Sistema relay desconectado';
+      this.showNotification('Sistema relay não está conectado', 'error');
     }
-
-    // Enviar mensagem de teste
-    const testMessage = {
-      type: 'test_ping',
-      timestamp: Date.now(),
-      from: this.currentAnydeskId || 'unknown'
-    };
-
-    this.relayWs.send(JSON.stringify(testMessage));
-    document.getElementById('debugLastMessage').textContent = `📤 Teste enviado: ${new Date().toLocaleTimeString()}`;
-    this.showNotification('Mensagem de teste enviada', 'info');
   }
 
   // Função para lidar com fim de sessão
@@ -1427,13 +1425,134 @@ class RemoteControlClient {
     // Limpar sessão atual
     this.currentRelaySession = null;
     
+    // Fechar TODAS as telas remotas de forma robusta
+    this.closeAllRemoteScreens();
+    
     // Resetar interface
     document.getElementById('sessionControls').style.display = 'none';
-    document.getElementById('remoteScreen').style.display = 'none';
     document.getElementById('connectionRequests').style.display = 'none';
     document.getElementById('connectionStatus').style.display = 'none';
     
     this.showNotification('Sessão encerrada', 'info');
+  }
+
+  // Função para fechar TODAS as telas remotas (duplicada para compatibilidade)
+  closeAllRemoteScreens() {
+    console.log('🔄 [app.js] Fechando todas as telas remotas...');
+    
+    // 1. Fechar tela remota do HTML principal
+    const remoteScreen = document.getElementById('remoteScreen');
+    if (remoteScreen) {
+      remoteScreen.style.display = 'none';
+      console.log('✅ Tela remota HTML fechada');
+    }
+    
+    // 2. Limpar canvas
+    const screenCanvas = document.getElementById('screenCanvas');
+    if (screenCanvas) {
+      const ctx = screenCanvas.getContext('2d');
+      ctx.clearRect(0, 0, screenCanvas.width, screenCanvas.height);
+      screenCanvas.style.display = 'none';
+      console.log('✅ Canvas limpo e oculto');
+    }
+    
+    // 3. Usar relay client se disponível
+    if (window.relayClient && typeof window.relayClient.closeAllRemoteScreens === 'function') {
+      window.relayClient.closeAllRemoteScreens();
+    }
+    
+    console.log('🎯 [app.js] Limpeza de tela remota concluída');
+  }
+
+  // Função para maximizar a tela remota
+  maximizeRemoteScreen() {
+    const remoteScreen = document.getElementById('remoteScreen');
+    const canvas = document.getElementById('screenCanvas');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const minimizeBtn = document.getElementById('minimizeBtn');
+    
+    if (!remoteScreen || !canvas) return;
+    
+    console.log('🔍 Maximizando tela remota...');
+    
+    // Aplicar estilo de tela cheia
+    remoteScreen.style.cssText = `
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      z-index: 10000 !important;
+      background: #000 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      display: block !important;
+    `;
+    
+    // Maximizar canvas
+    canvas.style.cssText = `
+      width: 100vw !important;
+      height: calc(100vh - 80px) !important;
+      border: none !important;
+      border-radius: 0 !important;
+      object-fit: contain !important;
+      background: #000 !important;
+    `;
+    
+    // Trocar botões
+    if (fullscreenBtn) fullscreenBtn.style.display = 'none';
+    if (minimizeBtn) minimizeBtn.style.display = 'inline-block';
+    
+    // Focus no canvas para controles
+    canvas.focus();
+    
+    // Bloquear scroll da página
+    document.body.style.overflow = 'hidden';
+    
+    console.log('✅ Tela maximizada');
+  }
+
+  // Função para minimizar a tela remota
+  minimizeRemoteScreen() {
+    const remoteScreen = document.getElementById('remoteScreen');
+    const canvas = document.getElementById('screenCanvas');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const minimizeBtn = document.getElementById('minimizeBtn');
+    
+    if (!remoteScreen || !canvas) return;
+    
+    console.log('🗗 Minimizando tela remota...');
+    
+    // Restaurar estilo normal
+    remoteScreen.style.cssText = `
+      display: block;
+      margin-top: 1rem;
+      position: relative;
+      width: auto;
+      height: auto;
+      z-index: auto;
+      background: auto;
+    `;
+    
+    // Restaurar canvas
+    canvas.style.cssText = `
+      border: 2px solid #333;
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      max-width: 100%;
+      height: auto;
+      width: auto;
+      object-fit: contain;
+    `;
+    
+    // Trocar botões
+    if (fullscreenBtn) fullscreenBtn.style.display = 'inline-block';
+    if (minimizeBtn) minimizeBtn.style.display = 'none';
+    
+    // Restaurar scroll da página
+    document.body.style.overflow = 'auto';
+    
+    console.log('✅ Tela minimizada');
   }
 }
 

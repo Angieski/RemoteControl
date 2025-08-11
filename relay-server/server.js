@@ -252,11 +252,16 @@ class RemoteControlRelayServer {
   }
 
   async handleRelayData(ws, message) {
-    const { sessionId, data, dataType } = message; // dataType: 'screen', 'input', 'audio'
+    const { sessionId, data, dataType } = message; // dataType: 'screen', 'input', 'screen_request'
     const senderId = ws.clientId;
+    
+    if (!senderId) {
+      return this.sendError(ws, 'Cliente não registrado');
+    }
     
     const session = this.sessions.get(sessionId);
     if (!session || session.status !== 'active') {
+      console.warn(`Tentativa de relay para sessão inválida: ${sessionId} por ${senderId}`);
       return this.sendError(ws, 'Sessão não ativa');
     }
     
@@ -271,8 +276,16 @@ class RemoteControlRelayServer {
     }
     
     const targetClient = this.clients.get(targetId);
-    if (!targetClient) {
+    if (!targetClient || targetClient.ws.readyState !== 1) {
+      console.warn(`Cliente de destino ${targetId} não disponível para relay`);
       return this.sendError(ws, 'Cliente de destino desconectado');
+    }
+    
+    // Log para debug
+    if (dataType === 'screen') {
+      console.log(`📺 Relay screen data: ${senderId} → ${targetId} (${sessionId.substring(0,8)}...)`);
+    } else if (dataType === 'input') {
+      console.log(`⌨️  Relay input data: ${senderId} → ${targetId} (${data?.type || 'unknown'})`);
     }
     
     // Relay dos dados

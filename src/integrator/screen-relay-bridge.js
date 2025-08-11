@@ -57,7 +57,7 @@ class ScreenRelayBridge {
         } catch (error) {
           console.error('Erro na captura para relay:', error);
         }
-      }, 100); // 10 FPS
+      }, 150); // ~6.5 FPS - Performance otimizada
       
     } catch (error) {
       console.error('Erro ao iniciar captura para relay:', error);
@@ -82,15 +82,19 @@ class ScreenRelayBridge {
   }
 
   async captureViaElectronAPI() {
-    // Aqui você integraria com o ScreenCapture existente
-    // Por enquanto, retornamos dados mock
-    return {
-      type: 'image/jpeg',
-      data: 'mock_screenshot_base64_data',
-      width: 1920,
-      height: 1080,
-      timestamp: Date.now()
-    };
+    try {
+      // Usar a API real do Electron
+      if (window.electronAPI && window.electronAPI.captureScreenRelay) {
+        const screenshot = await window.electronAPI.captureScreenRelay();
+        return screenshot;
+      } else {
+        console.error('electronAPI.captureScreenRelay não disponível');
+        return null;
+      }
+    } catch (error) {
+      console.error('Erro na captura via Electron API:', error);
+      return null;
+    }
   }
 
   async captureViaWebAPI() {
@@ -140,12 +144,20 @@ class ScreenRelayBridge {
 
   processInputFromRelay(inputData) {
     try {
-      // Integrar com InputController existente
-      if (this.inputController && window.electronAPI) {
-        // Processar via sistema existente
-        this.inputController.processInput(inputData);
+      // Integrar com InputController via Electron IPC
+      if (window.electronAPI && window.electronAPI.sendInputRelay) {
+        window.electronAPI.sendInputRelay(inputData)
+          .then(result => {
+            if (!result) {
+              console.warn('Falha ao processar input:', inputData);
+            }
+          })
+          .catch(error => {
+            console.error('Erro ao processar input via IPC:', error);
+          });
       } else {
-        // Fallback para eventos DOM
+        console.error('electronAPI.sendInputRelay não disponível');
+        // Fallback para eventos DOM (limitado)
         this.processInputViaDom(inputData);
       }
     } catch (error) {

@@ -3,8 +3,8 @@ const sharp = require('sharp');
 
 class ScreenCapture {
   constructor() {
-    this.quality = 80;
-    this.scale = 1.0;
+    this.quality = 60; // Reduzir qualidade para melhorar performance
+    this.scale = 0.75; // Reduzir resolução para melhorar performance
     this.format = 'jpeg';
   }
 
@@ -24,9 +24,18 @@ class ScreenCapture {
       const processedImage = await sharp(pngBuffer)
         .resize(
           Math.floor(primaryDisplay.width() * this.scale),
-          Math.floor(primaryDisplay.height() * this.scale)
+          Math.floor(primaryDisplay.height() * this.scale),
+          {
+            kernel: sharp.kernel.nearest, // Mais rápido que bicubic
+            fastShrinkOnLoad: true
+          }
         )
-        .jpeg({ quality: this.quality })
+        .jpeg({ 
+          quality: this.quality,
+          progressive: false, // Mais rápido
+          optimizeScans: false, // Mais rápido
+          mozjpeg: true // Melhor compressão
+        })
         .toBuffer();
 
       return processedImage;

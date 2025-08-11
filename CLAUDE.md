@@ -72,6 +72,50 @@ npm run dev        # Development mode with nodemon
 - Increment version for each build: `1.1.2` → `1.1.3`
 - Relay server version: `1.0.0` (separate versioning in relay-server/package.json)
 
+## Application Flow Architecture
+
+### Local Network Flow (Primary)
+1. **Host Startup**: `main.js` creates RemoteControlServer on port 3000
+2. **Authentication**: 6-digit codes generated via `authentication.js` (5-min expiry)
+3. **Screen Capture**: `screenCapture.js` uses node-screenshots → Sharp → JPEG (80% quality, ~192KB frames)
+4. **Input Processing**: `inputController.js` handles mouse/keyboard via robotjs
+5. **Client Connection**: WebSocket handshake → authentication → session establishment
+
+### Internet Relay Flow (Secondary)
+1. **Relay Registration**: `relay-client.js` connects to `relay-server.js` (port 8080)
+2. **ID Generation**: AnyDesk-style 9-digit IDs for client identification
+3. **Session Relay**: `screen-relay-bridge.js` integrates local capture with relay data flow
+4. **NAT Traversal**: Central relay eliminates firewall/router configuration needs
+
+### IPC Bridge Architecture (Electron Security)
+- `preload.js` exposes limited API via `contextBridge` to renderer process
+- Main process (`main.js`) handles all native operations (screen capture, input control)
+- Renderer process cannot directly access Node.js APIs (security isolation)
+
+## Key Integration Points
+
+### Screen Capture Integration (`screenCapture.js:11-37`)
+- Primary: `Monitor.all()` → `captureImageSync()` → Sharp JPEG conversion
+- Quality control: 1-100 scale (default 80), resolution scaling 0.1-2.0x
+- Performance: ~100ms intervals for 10 FPS, ~192KB typical frame size
+
+### Input Control Integration (`inputController.js:13-47`)
+- Mouse events: `moveMouse()`, `mouseClick()` with screen boundary clamping
+- Keyboard events: `keyTap()` with modifier support, special key mapping
+- Screen coordination: Robot.js screen size detection for coordinate validation
+
+### WebSocket Message Flow (`server/index.js:76-101`)
+- `register_host` → Authentication → Session creation → Client mapping
+- `connect_viewer` → Code validation → Session joining → Host notification
+- `screen_request` → Screen capture trigger → Binary frame transmission
+- `input_event` → Input validation → Robot.js execution
+
+### Relay Server Session Management (`relay-server/server.js:122-252`)
+- Client registration with device info and 9-digit ID generation
+- Connection request/approval flow with session state management
+- Heartbeat system (30s intervals) with 2-minute offline cleanup
+- Data relay with bidirectional screen/input forwarding
+
 ## Authentication System
 
 The app uses a **6-digit temporary access code system**:
@@ -217,3 +261,29 @@ When making changes:
 - `@hurdlegroup/robotjs@0.12.3`: **CRITICAL** - Use exact version for Node.js 22 compatibility
 - Native dependency rebuild required after Node.js version changes
 - Screen capture permissions vary by platform (macOS requires explicit permission)
+
+## Critical Code Patterns
+
+### Error Handling Pattern
+- All async operations wrapped in try-catch blocks
+- WebSocket errors logged with context information
+- Authentication failures return structured error responses
+- Screen capture failures gracefully fallback with error reporting
+
+### Session State Management
+- Client connections stored in Map structures for O(1) lookup
+- Session cleanup triggered on disconnect events and periodic intervals
+- Connection state validated before processing input/screen requests
+- Heartbeat mechanism prevents zombie connections
+
+### Performance Optimization
+- Screen capture limited to 10 FPS (100ms intervals) for bandwidth efficiency
+- JPEG compression quality configurable (default 80%) balancing size vs quality
+- Input event batching to reduce network overhead
+- Binary WebSocket frames for screen data, JSON for control messages
+
+### Security Implementation
+- No direct Node.js API exposure to renderer process
+- Access codes expire automatically (default 5 minutes)
+- Input validation on all remote control commands
+- Session isolation prevents cross-session data leakage
