@@ -45,7 +45,7 @@ class RemoteControlRelayClient {
 
     // Atualizar status do relay
     if (relayServerStatusHost) {
-      relayServerStatusHost.textContent = '🔄 Conectando...';
+      relayServerStatusHost.textContent = 'Conectando...';
     }
 
     // Event listener para copiar ID
@@ -133,7 +133,7 @@ class RemoteControlRelayClient {
       
       this.ws.onopen = () => {
         console.log('Conectado ao servidor relay');
-        this.updateRelayStatus('✅ Online');
+        this.updateRelayStatus('Online');
         this.isConnected = true;
         this.startHeartbeat();
       };
@@ -144,7 +144,7 @@ class RemoteControlRelayClient {
       
       this.ws.onclose = () => {
         console.log('Desconectado do servidor relay');
-        this.updateRelayStatus('❌ Offline');
+        this.updateRelayStatus('Offline');
         this.isConnected = false;
         this.stopHeartbeat();
         
@@ -158,12 +158,12 @@ class RemoteControlRelayClient {
       
       this.ws.onerror = (error) => {
         console.error('Erro no servidor relay:', error);
-        this.updateRelayStatus('❌ Erro de Conexão');
+        this.updateRelayStatus('Erro de Conexão');
       };
       
     } catch (error) {
       console.error('Erro ao conectar ao relay:', error);
-      this.updateRelayStatus('❌ Falha na Conexão');
+      this.updateRelayStatus('Falha na Conexão');
     }
   }
 
@@ -223,7 +223,7 @@ class RemoteControlRelayClient {
 
   registerAsHost() {
     if (!this.isConnected) {
-      this.updateRelayStatus('❌ Não conectado');
+      this.updateRelayStatus('Não conectado');
       return;
     }
     
@@ -243,7 +243,7 @@ class RemoteControlRelayClient {
     // Atualizar status na aba host
     const relayServerStatusHost = document.getElementById('relayServerStatusHost');
     if (relayServerStatusHost) {
-      relayServerStatusHost.textContent = '🔄 Registrando...';
+      relayServerStatusHost.textContent = 'Registrando...';
     }
     
     const listeningStatus = document.getElementById('listeningStatus');
@@ -262,7 +262,7 @@ class RemoteControlRelayClient {
     }
     
     if (!this.isConnected) {
-      this.updateConnectionStatus('❌ Não conectado ao relay');
+      this.updateConnectionStatus('Não conectado ao relay');
       return;
     }
     
@@ -347,7 +347,7 @@ class RemoteControlRelayClient {
       }
       
       if (debugMyId) debugMyId.textContent = this.clientId;
-      if (relayServerStatusHost) relayServerStatusHost.textContent = '🟢 Online';
+      if (relayServerStatusHost) relayServerStatusHost.textContent = 'Online';
       if (listeningStatus) listeningStatus.textContent = `Aguardando conexões - ID: ${this.clientId}`;
     }
     
@@ -370,12 +370,12 @@ class RemoteControlRelayClient {
     if (requestsList) {
       requestsList.innerHTML = `
         <div class="connection-request-item" style="background: rgba(255, 193, 7, 0.1); padding: 1rem; border-radius: 8px; border-left: 4px solid #ffc107;">
-          <h4>📞 Nova Solicitação</h4>
+          <h4>Nova Solicitação</h4>
           <p><strong>ID:</strong> ${message.requesterId}</p>
           <p><strong>Tipo:</strong> ${message.requestType === 'control' ? 'Controlar este computador' : 'Visualizar tela'}</p>
           <div style="margin-top: 1rem;">
-            <button id="acceptConnectionBtn" class="btn-success" style="margin-right: 0.5rem;">✅ Aceitar</button>
-            <button id="rejectConnectionBtn" class="btn-danger">❌ Rejeitar</button>
+            <button id="acceptConnectionBtn" class="btn-success" style="margin-right: 0.5rem;">Aceitar</button>
+            <button id="rejectConnectionBtn" class="btn-danger">Rejeitar</button>
           </div>
         </div>
       `;
@@ -819,7 +819,7 @@ class RemoteControlRelayClient {
       
       // Botão para fechar sessão
       const closeBtn = document.createElement('button');
-      closeBtn.textContent = '❌ Encerrar Sessão';
+      closeBtn.textContent = 'Encerrar Sessão';
       closeBtn.style.cssText = `
         position: absolute;
         top: 20px;
